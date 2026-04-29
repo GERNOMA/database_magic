@@ -28,7 +28,9 @@
 {/if}
 
 {#if data.saved}
-	<div class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+	<div
+		class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+	>
 		Metadata saved.
 	</div>
 {/if}
@@ -51,6 +53,14 @@
 					Add
 				</button>
 			</div>
+		</form>
+
+		<form method="POST" action="?/autoImportTables" class="mt-4">
+			<button
+				class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-white"
+			>
+				Auto import
+			</button>
 		</form>
 
 		<div class="mt-5 space-y-2">
@@ -179,7 +189,7 @@
 							name="json"
 							rows="18"
 							spellcheck="false"
-							class="max-h-[420px] w-full resize-y overflow-auto rounded-2xl border-0 bg-stone-950 p-4 font-mono text-xs leading-6 text-stone-100 outline-none ring-1 ring-transparent focus:ring-stone-500"
+							class="max-h-[420px] w-full resize-y overflow-auto rounded-2xl border-0 bg-stone-950 p-4 font-mono text-xs leading-6 text-stone-100 ring-1 ring-transparent outline-none focus:ring-stone-500"
 							value={selectedMetadata.json}
 						></textarea>
 						<div class="flex justify-end">

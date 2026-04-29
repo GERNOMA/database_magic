@@ -1,14 +1,36 @@
 import { env } from '$env/dynamic/private';
 
-type Message = {
-	role: 'system' | 'user';
-	content: string;
+export type OpenRouterToolCall = {
+	id: string;
+	type: 'function';
+	function: {
+		name: string;
+		arguments: string;
+	};
+};
+
+export type OpenRouterMessage = {
+	role: 'system' | 'user' | 'assistant' | 'tool';
+	content?: string | null;
+	tool_call_id?: string;
+	tool_calls?: OpenRouterToolCall[];
+};
+
+export type OpenRouterTool = {
+	type: 'function';
+	function: {
+		name: string;
+		description: string;
+		parameters: Record<string, unknown>;
+	};
 };
 
 type OpenRouterResponse = {
 	choices?: Array<{
 		message?: {
-			content?: string;
+			role?: 'assistant';
+			content?: string | null;
+			tool_calls?: OpenRouterToolCall[];
 		};
 	}>;
 	error?: {
@@ -16,7 +38,16 @@ type OpenRouterResponse = {
 	};
 };
 
-export async function askOpenRouter(messages: Message[], options: { json?: boolean } = {}) {
+type OpenRouterOptions = {
+	json?: boolean;
+	tools?: OpenRouterTool[];
+	toolChoice?: 'auto' | 'none';
+};
+
+export async function createOpenRouterChatCompletion(
+	messages: OpenRouterMessage[],
+	options: OpenRouterOptions = {}
+) {
 	if (!env.OPENROUTER_API_KEY) {
 		throw new Error('OPENROUTER_API_KEY is not set');
 	}
@@ -33,7 +64,8 @@ export async function askOpenRouter(messages: Message[], options: { json?: boole
 			model: 'openai/gpt-5.5',
 			messages,
 			temperature: 0.1,
-			...(options.json ? { response_format: { type: 'json_object' } } : {})
+			...(options.json ? { response_format: { type: 'json_object' } } : {}),
+			...(options.tools ? { tools: options.tools, tool_choice: options.toolChoice ?? 'auto' } : {})
 		})
 	});
 
@@ -43,7 +75,18 @@ export async function askOpenRouter(messages: Message[], options: { json?: boole
 		throw new Error(body.error?.message ?? 'OpenRouter request failed');
 	}
 
-	const content = body.choices?.[0]?.message?.content?.trim();
+	const message = body.choices?.[0]?.message;
+	if (!message) throw new Error('OpenRouter returned an empty response');
+
+	return message;
+}
+
+export async function askOpenRouter(
+	messages: OpenRouterMessage[],
+	options: Pick<OpenRouterOptions, 'json'> = {}
+) {
+	const message = await createOpenRouterChatCompletion(messages, options);
+	const content = message.content?.trim();
 	if (!content) throw new Error('OpenRouter returned an empty response');
 
 	return content;

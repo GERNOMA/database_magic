@@ -1,9 +1,51 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let question = $state('');
+	let pendingQuestion = $state<string | null>(null);
+	let isWaitingForAnswer = $state(false);
+	let messages = $derived(
+		pendingQuestion
+			? [
+					...data.messages,
+					{
+						id: 'pending-user-message',
+						chatId: data.selectedChat?.id ?? 0,
+						role: 'user' as const,
+						content: pendingQuestion,
+						sql: null,
+						rowsJson: null,
+						createdAt: new Date().toISOString()
+					}
+				]
+			: data.messages
+	);
+
+	const handleAskSubmit: SubmitFunction = ({ formData, cancel }) => {
+		const submittedQuestion = String(formData.get('question') ?? '').trim();
+		if (!submittedQuestion || isWaitingForAnswer) {
+			cancel();
+			return;
+		}
+
+		pendingQuestion = submittedQuestion;
+		question = '';
+		isWaitingForAnswer = true;
+
+		return async ({ result, update }) => {
+			if (result.type === 'failure') {
+				question = submittedQuestion;
+			}
+
+			await update({ reset: false });
+			pendingQuestion = null;
+			isWaitingForAnswer = false;
+		};
+	};
 
 	function formatDate(value: string) {
 		return new Intl.DateTimeFormat(undefined, {
@@ -119,7 +161,7 @@
 		</header>
 
 		<div class="flex-1 space-y-5 overflow-auto bg-stone-50/70 p-5">
-			{#each data.messages as message (message.id)}
+			{#each messages as message (message.id)}
 				{#if message.role === 'user'}
 					<div class="flex justify-end">
 						<div class="max-w-[78%] rounded-3xl bg-stone-950 px-5 py-4 text-white shadow-sm">
@@ -163,9 +205,19 @@
 					</div>
 				</div>
 			{/each}
+			{#if isWaitingForAnswer}
+				<div class="max-w-3xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+					<p class="text-sm font-semibold text-stone-700">Database Magic</p>
+					<div class="mt-4 flex items-center gap-1" aria-label="Database Magic is typing">
+						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400"></span>
+						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:150ms]"></span>
+						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:300ms]"></span>
+					</div>
+				</div>
+			{/if}
 		</div>
 
-		<form method="POST" action="?/ask" class="border-t border-stone-200 p-5">
+		<form method="POST" action="?/ask" class="border-t border-stone-200 p-5" use:enhance={handleAskSubmit}>
 			<input type="hidden" name="chatId" value={data.selectedChat?.id ?? ''} />
 			<div
 				class="rounded-3xl border border-stone-200 bg-stone-50 p-2 focus-within:border-stone-500"
@@ -173,21 +225,42 @@
 				<textarea
 					name="question"
 					bind:value={question}
+					disabled={isWaitingForAnswer}
 					rows="3"
 					placeholder="Ask a follow-up, like: why did that change?"
-					class="max-h-48 w-full resize-y border-0 bg-transparent p-3 text-sm leading-6 outline-none"
+					class="max-h-48 w-full resize-y border-0 bg-transparent p-3 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-stone-400"
 				></textarea>
 				<div class="flex items-center justify-between gap-3 px-2 pb-2">
 					<p class="text-xs text-stone-500">
 						{data.selectedChat ? 'Continuing this chat' : 'A new chat will be saved automatically'}
 					</p>
 					<button
-						class="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
+						disabled={isWaitingForAnswer}
+						class="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
 					>
-						Send
+						{isWaitingForAnswer ? 'Sending...' : 'Send'}
 					</button>
 				</div>
 			</div>
 		</form>
 	</section>
 </div>
+
+<style>
+	.typing-dot {
+		animation: typing-bounce 900ms infinite ease-in-out;
+	}
+
+	@keyframes typing-bounce {
+		0%,
+		80%,
+		100% {
+			opacity: 0.35;
+			transform: translateY(0);
+		}
+		40% {
+			opacity: 1;
+			transform: translateY(-0.25rem);
+		}
+	}
+</style>

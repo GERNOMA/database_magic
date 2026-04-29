@@ -2,7 +2,14 @@ import { fail, redirect } from '@sveltejs/kit';
 import { asc, desc, eq } from 'drizzle-orm';
 import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
-import { compiledMetadata, metadataTables, tableFiles, tableMetadata } from '$lib/server/db/schema';
+import { isDatabaseType, listDatabaseTableNames } from '$lib/server/db/query-runner';
+import {
+	compiledMetadata,
+	databaseConnections,
+	metadataTables,
+	tableFiles,
+	tableMetadata
+} from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
 type MetadataJson = {
@@ -72,6 +79,47 @@ export const actions: Actions = {
 		await db.delete(metadataTables).where(eq(metadataTables.id, tableId));
 
 		throw redirect(303, '/metadata');
+	},
+
+	autoImportTables: async () => {
+		const [connection] = await db
+			.select()
+			.from(databaseConnections)
+			.orderBy(desc(databaseConnections.updatedAt))
+			.limit(1);
+		if (!connection) return fail(400, { error: 'Connect a database before importing tables.' });
+		if (!isDatabaseType(connection.type)) {
+			return fail(400, { error: 'Choose a supported database type before importing tables.' });
+		}
+
+		let databaseTableNames: string[];
+		try {
+			databaseTableNames = await listDatabaseTableNames(
+				connection.type,
+				connection.connectionString
+			);
+		} catch (error) {
+			return fail(500, {
+				error: error instanceof Error ? error.message : 'Could not import database tables.'
+			});
+		}
+
+		const existingTables = await db.select().from(metadataTables);
+		const existingNames = new Set(existingTables.map((table) => table.name));
+		const namesToImport = databaseTableNames
+			.map(cleanName)
+			.filter((name, index, names) => name && names.indexOf(name) === index)
+			.filter((name) => !existingNames.has(name));
+
+		if (namesToImport.length === 0) throw redirect(303, '/metadata');
+
+		const timestamp = now();
+		const importedTables = await db
+			.insert(metadataTables)
+			.values(namesToImport.map((name) => ({ name, createdAt: timestamp, updatedAt: timestamp })))
+			.returning();
+
+		throw redirect(303, `/metadata?table=${importedTables[0]?.id ?? ''}`);
 	},
 
 	addFile: async ({ request }) => {
