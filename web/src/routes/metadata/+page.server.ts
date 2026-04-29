@@ -240,7 +240,7 @@ export const actions: Actions = {
 					{
 						role: 'system',
 						content:
-							'You analyze database context files and return strict JSON only. Write descriptions in Spanish. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
+							'You analyze database context files and return strict JSON only. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
 					},
 					{
 						role: 'user',
