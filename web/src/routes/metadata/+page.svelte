@@ -10,6 +10,11 @@
 	const selectedFiles = $derived(
 		selectedTable ? data.files.filter((file) => file.tableId === selectedTable.id) : []
 	);
+	const hasAutomaticFile = $derived(
+		selectedTable
+			? selectedFiles.some((file) => file.name === `${selectedTable.name}_automatic.json`)
+			: false
+	);
 	const selectedMetadata = $derived(
 		selectedTable
 			? data.metadataRows.find((metadata) => metadata.tableId === selectedTable.id)
@@ -111,14 +116,16 @@
 
 				{#if selectedTable}
 					<div class="flex flex-col gap-2 sm:flex-row">
-						<form method="POST" action="?/addAutomaticFile">
-							<input type="hidden" name="tableId" value={selectedTable.id} />
-							<button
-								class="h-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
-							>
-								Automatic file
-							</button>
-						</form>
+						{#if !hasAutomaticFile}
+							<form method="POST" action="?/addAutomaticFile">
+								<input type="hidden" name="tableId" value={selectedTable.id} />
+								<button
+									class="h-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+								>
+									Automatic file
+								</button>
+							</form>
+						{/if}
 						<form
 							method="POST"
 							action="?/addFile"
