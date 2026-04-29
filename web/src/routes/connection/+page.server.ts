@@ -23,21 +23,22 @@ export const actions: Actions = {
 		const type = String(form.get('type') ?? '').trim();
 		const connectionString = String(form.get('connectionString') ?? '').trim();
 
-		if (!isDatabaseType(type)) return fail(400, { error: 'Choose a supported database type.' });
-		if (!connectionString) return fail(400, { error: 'Connection string is required.' });
+		if (!isDatabaseType(type))
+			return fail(400, { error: 'Elige un tipo de base de datos compatible.' });
+		if (!connectionString) return fail(400, { error: 'La cadena de conexión es obligatoria.' });
 
 		try {
 			await testDatabaseConnection(type, connectionString);
 		} catch (error) {
 			return fail(400, {
-				error: `Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+				error: `La prueba de conexión falló: ${error instanceof Error ? error.message : 'Error desconocido'}`
 			});
 		}
 
 		const timestamp = now();
 		await db.delete(databaseConnections);
 		await db.insert(databaseConnections).values({
-			name: 'Primary database',
+			name: 'Base de datos principal',
 			type,
 			connectionString,
 			createdAt: timestamp,

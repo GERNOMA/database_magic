@@ -45,3 +45,22 @@ export const compiledMetadata = sqliteTable('compiled_metadata', {
 	json: text('json').notNull(),
 	createdAt: text('created_at').notNull()
 });
+
+export const askChats = sqliteTable('ask_chats', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	title: text('title').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull()
+});
+
+export const askMessages = sqliteTable('ask_messages', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	chatId: integer('chat_id')
+		.notNull()
+		.references(() => askChats.id, { onDelete: 'cascade' }),
+	role: text('role').notNull(),
+	content: text('content').notNull(),
+	sql: text('sql'),
+	rowsJson: text('rows_json'),
+	createdAt: text('created_at').notNull()
+});
