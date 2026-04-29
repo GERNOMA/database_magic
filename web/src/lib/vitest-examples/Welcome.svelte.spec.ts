@@ -9,7 +9,7 @@ describe('Welcome.svelte', () => {
 
 		await expect
 			.element(page.getByRole('heading', { level: 1 }))
-			.toHaveTextContent('Hello, SvelteKit!');
-		await expect.element(page.getByText('Hello, Vitest!')).toBeInTheDocument();
+			.toHaveTextContent('Hola, SvelteKit!');
+		await expect.element(page.getByText('Hola, Vitest!')).toBeInTheDocument();
 	});
 });

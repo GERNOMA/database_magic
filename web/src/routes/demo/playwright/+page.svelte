@@ -1,1 +1,1 @@
-<h1>Playwright e2e test demo</h1>
+<h1>Demo de prueba e2e de Playwright</h1>

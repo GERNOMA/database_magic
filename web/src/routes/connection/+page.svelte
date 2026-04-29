@@ -5,14 +5,14 @@
 </script>
 
 <svelte:head>
-	<title>Connection | Database Magic</title>
+	<title>Conexión | Database Magic</title>
 </svelte:head>
 
 <section class="mx-auto max-w-2xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-	<h1 class="text-2xl font-semibold">Connection</h1>
+	<h1 class="text-2xl font-semibold">Conexión</h1>
 	<p class="mt-2 text-sm text-stone-500">
-		Connect to a database anywhere the server can reach. Use a read-only database user whenever
-		possible.
+		Conéctate a una base de datos que el servidor pueda alcanzar. Usa un usuario de solo lectura
+		siempre que sea posible.
 	</p>
 
 	{#if form?.error}
@@ -22,7 +22,7 @@
 	{/if}
 
 	<form method="POST" action="?/saveConnection" class="mt-6 space-y-4">
-		<label class="block text-sm font-medium text-stone-700" for="type">Database type</label>
+		<label class="block text-sm font-medium text-stone-700" for="type">Tipo de base de datos</label>
 		<select
 			id="type"
 			name="type"
@@ -36,7 +36,7 @@
 		</select>
 
 		<label class="block text-sm font-medium text-stone-700" for="connection">
-			Connection string
+			Cadena de conexión
 		</label>
 		<input
 			id="connection"
@@ -46,13 +46,13 @@
 			class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 outline-none focus:border-stone-500"
 		/>
 		<p class="text-xs leading-5 text-stone-500">
-			Examples: <code>postgres://user:pass@host:5432/db</code>,
-			<code>mysql://user:pass@host:3306/db</code>, or <code>/absolute/path/to/local.db</code>.
+			Ejemplos: <code>postgres://user:pass@host:5432/db</code>,
+			<code>mysql://user:pass@host:3306/db</code> o <code>/ruta/absoluta/a/local.db</code>.
 		</p>
 		<button
 			class="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white hover:bg-stone-800"
 		>
-			Save connection
+			Guardar conexión
 		</button>
 	</form>
 
@@ -60,7 +60,7 @@
 		<p
 			class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
 		>
-			Connection saved.
+			Conexión guardada.
 		</p>
 	{/if}
 </section>

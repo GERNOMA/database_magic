@@ -7,9 +7,9 @@
 	let { children } = $props();
 
 	const navItems = [
-		{ label: 'Metadata', href: '/metadata' },
-		{ label: 'Ask', href: '/ask' },
-		{ label: 'Connection', href: '/connection' }
+		{ label: 'Metadatos', href: '/metadata' },
+		{ label: 'Preguntar', href: '/ask' },
+		{ label: 'Conexión', href: '/connection' }
 	] as const;
 </script>
 
