@@ -30,14 +30,14 @@ function createQueryDatabaseTool(dialect: string): OpenRouterTool {
 		type: 'function',
 		function: {
 			name: QUERY_DATABASE_TOOL_NAME,
-			description: `Ejecuta una consulta SQL ${dialect} de solo lectura contra la base de datos conectada y devuelve las filas como JSON. Usa esto solo cuando se necesiten valores actuales de la base de datos para responder al usuario.`,
+			description: `Run one read-only ${dialect} SQL query against the connected database and return rows as JSON. Use this only when live database values are needed to answer the user.`,
 			parameters: {
 				type: 'object',
 				properties: {
 					sql: {
 						type: 'string',
 						description:
-							'Una sentencia SELECT o WITH de solo lectura. No incluyas comentarios, mutaciones, PRAGMAs ni varias sentencias. Agrega un LIMIT para conjuntos de resultados amplios.'
+							'One read-only SELECT or WITH statement. Do not include comments, mutations, PRAGMAs, or multiple statements. Add a LIMIT for broad result sets.'
 					}
 				},
 				required: ['sql'],
@@ -50,7 +50,7 @@ function createQueryDatabaseTool(dialect: string): OpenRouterTool {
 function parseQueryDatabaseArgs(value: string) {
 	const parsed = JSON.parse(value) as { sql?: unknown };
 	if (typeof parsed.sql !== 'string' || parsed.sql.trim().length === 0) {
-		throw new Error('La llamada a la herramienta SQL no incluyó una consulta.');
+		throw new Error('The SQL tool call did not include a query.');
 	}
 	return { sql: extractReadOnlySql(parsed.sql) };
 }
@@ -129,19 +129,19 @@ export const actions: Actions = {
 				.slice(-10)
 				.map((message) => {
 					if (message.role === 'assistant') {
-						return `Asistente: ${message.content}${message.sql ? `\nSQL: ${message.sql}` : ''}`;
+						return `Assistant: ${message.content}${message.sql ? `\nSQL: ${message.sql}` : ''}`;
 					}
-					return `Usuario: ${message.content}`;
+					return `User: ${message.content}`;
 				})
 				.join('\n\n');
 			const modelMessages: OpenRouterMessage[] = [
 				{
 					role: 'system',
-					content: `Eres un asistente de base de datos de solo lectura para ${dialect}. Responde en español a partir de los metadatos de la base de datos y del chat anterior cuando eso sea suficiente. Puedes llamar a ${QUERY_DATABASE_TOOL_NAME} cuando se necesiten valores actuales de la base de datos, pero la herramienta es opcional. Si la llamas, usa solo una sentencia SELECT o WITH y limita los conjuntos de resultados amplios a ${MAX_TOOL_ROWS} filas. Después de cualquier resultado de herramienta, da una respuesta humana concisa y no inventes hechos fuera del resultado.`
+					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If you call it, use one SELECT or WITH statement only and limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
 				},
 				{
 					role: 'user',
-					content: `Metadatos de la base de datos:\n${metadataContext}\n\nChat anterior:\n${chatContext || 'No hay mensajes anteriores.'}\n\nPregunta: ${question}`
+					content: `Database metadata:\n${metadataContext}\n\nPrior chat:\n${chatContext || 'No prior messages.'}\n\nQuestion: ${question}`
 				}
 			];
 			let answer = '';
@@ -171,7 +171,7 @@ export const actions: Actions = {
 							role: 'tool',
 							tool_call_id: toolCall.id,
 							content: JSON.stringify({
-								error: `Herramienta desconocida: ${toolCall.function.name}`
+								error: `Unknown tool: ${toolCall.function.name}`
 							})
 						});
 						continue;
@@ -197,8 +197,7 @@ export const actions: Actions = {
 							role: 'tool',
 							tool_call_id: toolCall.id,
 							content: JSON.stringify({
-								error:
-									error instanceof Error ? error.message : 'No se pudo ejecutar la consulta SQL.'
+								error: error instanceof Error ? error.message : 'Could not run the SQL query.'
 							})
 						});
 					}

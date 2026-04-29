@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import Welcome from './Welcome.svelte';
 
 describe('Welcome.svelte', () => {
-	it('renderiza saludos para host e invitado', async () => {
+	it('renders greetings for host and guest', async () => {
 		render(Welcome, { host: 'SvelteKit', guest: 'Vitest' });
 
 		await expect

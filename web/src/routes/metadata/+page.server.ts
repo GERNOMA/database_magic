@@ -240,11 +240,11 @@ export const actions: Actions = {
 					{
 						role: 'system',
 						content:
-							'Analiza archivos de contexto de base de datos y devuelve solo JSON estricto. Escribe las descripciones en español. La forma del JSON debe ser {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
+							'You analyze database context files and return strict JSON only. Write descriptions in Spanish. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
 					},
 					{
 						role: 'user',
-						content: `Analiza la tabla llamada "${table.name}". Usa estos archivos como contexto:\n\n${files
+						content: `Analyze the table named "${table.name}". Use these files as context:\n\n${files
 							.map((file) => `--- ${file.name} ---\n${file.content}`)
 							.join('\n\n')}`
 					}
