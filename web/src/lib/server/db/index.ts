@@ -49,6 +49,23 @@ client.exec(`
 		json TEXT NOT NULL,
 		created_at TEXT NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS ask_chats (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS ask_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id INTEGER NOT NULL REFERENCES ask_chats(id) ON DELETE CASCADE,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		sql TEXT,
+		rows_json TEXT,
+		created_at TEXT NOT NULL
+	);
 `);
 
 export const db = drizzle(client, { schema });

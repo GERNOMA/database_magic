@@ -27,6 +27,12 @@
 	</div>
 {/if}
 
+{#if data.saved}
+	<div class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+		Metadata saved.
+	</div>
+{/if}
+
 <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
 		<form method="POST" action="?/addTable" class="space-y-3">
@@ -166,9 +172,28 @@
 					{/if}
 				</div>
 
-				<pre
-					class="mt-5 max-h-[420px] overflow-auto rounded-2xl bg-stone-950 p-4 text-xs leading-6 text-stone-100">{selectedMetadata?.json ??
-						'{\n  "tableName": "",\n  "generalDescription": "",\n  "fields": []\n}'}</pre>
+				{#if selectedMetadata && selectedTable}
+					<form method="POST" action="?/saveMetadata" class="mt-5 space-y-3">
+						<input type="hidden" name="tableId" value={selectedTable.id} />
+						<textarea
+							name="json"
+							rows="18"
+							spellcheck="false"
+							class="max-h-[420px] w-full resize-y overflow-auto rounded-2xl border-0 bg-stone-950 p-4 font-mono text-xs leading-6 text-stone-100 outline-none ring-1 ring-transparent focus:ring-stone-500"
+							value={selectedMetadata.json}
+						></textarea>
+						<div class="flex justify-end">
+							<button
+								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+							>
+								Save metadata
+							</button>
+						</div>
+					</form>
+				{:else}
+					<pre
+						class="mt-5 max-h-[420px] overflow-auto rounded-2xl bg-stone-950 p-4 text-xs leading-6 text-stone-100">{'{\n  "tableName": "",\n  "generalDescription": "",\n  "fields": []\n}'}</pre>
+				{/if}
 			</div>
 
 			<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">

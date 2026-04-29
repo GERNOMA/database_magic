@@ -39,7 +39,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		files,
 		metadataRows,
 		selectedTableId,
-		compiled
+		compiled,
+		saved: url.searchParams.get('saved') === '1'
 	};
 };
 
@@ -159,6 +160,34 @@ export const actions: Actions = {
 			});
 		}
 		throw redirect(303, `/metadata?table=${tableId}`);
+	},
+
+	saveMetadata: async ({ request }) => {
+		const form = await request.formData();
+		const tableId = Number(form.get('tableId'));
+		const json = String(form.get('json') ?? '').trim();
+
+		if (!tableId) return fail(400, { error: 'Select a table before saving metadata.' });
+		if (!json) return fail(400, { error: 'Metadata JSON cannot be empty.' });
+
+		const [metadata] = await db
+			.select()
+			.from(tableMetadata)
+			.where(eq(tableMetadata.tableId, tableId))
+			.limit(1);
+		if (!metadata) return fail(404, { error: 'Generate metadata before editing it.' });
+
+		try {
+			const parsed = extractJson<MetadataJson>(json);
+			await db
+				.update(tableMetadata)
+				.set({ json: JSON.stringify(parsed, null, 2), updatedAt: now() })
+				.where(eq(tableMetadata.tableId, tableId));
+		} catch {
+			return fail(400, { error: 'Metadata must be valid JSON before it can be saved.' });
+		}
+
+		throw redirect(303, `/metadata?table=${tableId}&saved=1`);
 	},
 
 	compileAll: async () => {
