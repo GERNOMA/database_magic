@@ -110,24 +110,34 @@
 				</div>
 
 				{#if selectedTable}
-					<form
-						method="POST"
-						action="?/addFile"
-						enctype="multipart/form-data"
-						class="flex flex-col gap-2 sm:flex-row"
-					>
-						<input type="hidden" name="tableId" value={selectedTable.id} />
-						<input
-							name="file"
-							type="file"
-							class="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-stone-950 file:px-3 file:py-1.5 file:text-sm file:text-white"
-						/>
-						<button
-							class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+					<div class="flex flex-col gap-2 sm:flex-row">
+						<form method="POST" action="?/addAutomaticFile">
+							<input type="hidden" name="tableId" value={selectedTable.id} />
+							<button
+								class="h-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+							>
+								Automatic file
+							</button>
+						</form>
+						<form
+							method="POST"
+							action="?/addFile"
+							enctype="multipart/form-data"
+							class="flex flex-col gap-2 sm:flex-row"
 						>
-							+ Add file
-						</button>
-					</form>
+							<input type="hidden" name="tableId" value={selectedTable.id} />
+							<input
+								name="file"
+								type="file"
+								class="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-stone-950 file:px-3 file:py-1.5 file:text-sm file:text-white"
+							/>
+							<button
+								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+							>
+								+ Add file
+							</button>
+						</form>
+					</div>
 				{/if}
 			</div>
 

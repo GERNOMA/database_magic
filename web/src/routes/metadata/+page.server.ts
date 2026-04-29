@@ -2,7 +2,11 @@ import { fail, redirect } from '@sveltejs/kit';
 import { asc, desc, eq } from 'drizzle-orm';
 import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
-import { isDatabaseType, listDatabaseTableNames } from '$lib/server/db/query-runner';
+import {
+	isDatabaseType,
+	listDatabaseTableFields,
+	listDatabaseTableNames
+} from '$lib/server/db/query-runner';
 import {
 	compiledMetadata,
 	databaseConnections,
@@ -136,6 +140,50 @@ export const actions: Actions = {
 			name: file.name,
 			content: await file.text(),
 			mimeType: file.type || 'text/plain',
+			createdAt: now()
+		});
+
+		throw redirect(303, `/metadata?table=${tableId}`);
+	},
+
+	addAutomaticFile: async ({ request }) => {
+		const form = await request.formData();
+		const tableId = Number(form.get('tableId'));
+		if (!tableId) return fail(400, { error: 'Select a table before adding files.' });
+
+		const [table] = await db
+			.select()
+			.from(metadataTables)
+			.where(eq(metadataTables.id, tableId))
+			.limit(1);
+		if (!table) return fail(404, { error: 'Table not found.' });
+
+		const [connection] = await db
+			.select()
+			.from(databaseConnections)
+			.orderBy(desc(databaseConnections.updatedAt))
+			.limit(1);
+		if (!connection) return fail(400, { error: 'Connect a database before adding an automatic file.' });
+		if (!isDatabaseType(connection.type)) {
+			return fail(400, { error: 'Choose a supported database type before adding an automatic file.' });
+		}
+
+		let fields: string[];
+		try {
+			fields = await listDatabaseTableFields(connection.type, connection.connectionString, table.name);
+		} catch (error) {
+			return fail(500, {
+				error: error instanceof Error ? error.message : 'Could not read table fields.'
+			});
+		}
+
+		if (fields.length === 0) return fail(400, { error: 'No fields found for that table.' });
+
+		await db.insert(tableFiles).values({
+			tableId,
+			name: `${table.name}_automatic.json`,
+			content: JSON.stringify({ tableName: table.name, fields }, null, 2),
+			mimeType: 'application/json',
 			createdAt: now()
 		});
 

@@ -50,6 +50,20 @@ export async function listDatabaseTableNames(type: DatabaseType, connectionStrin
 	return [...new Set(names)].sort((left, right) => left.localeCompare(right));
 }
 
+export async function listDatabaseTableFields(
+	type: DatabaseType,
+	connectionString: string,
+	tableName: string
+) {
+	const rows = await runReadOnlyQuery(type, connectionString, getTableFieldsSql(type, tableName));
+	const fields = rows
+		.map((row) => row.name)
+		.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+		.map((name) => name.trim());
+
+	return [...new Set(fields)];
+}
+
 function getTableNamesSql(type: DatabaseType) {
 	if (type === 'postgres') {
 		return `
@@ -78,6 +92,38 @@ function getTableNamesSql(type: DatabaseType) {
 			AND name NOT LIKE 'sqlite_%'
 		ORDER BY name
 	`;
+}
+
+function getTableFieldsSql(type: DatabaseType, tableName: string) {
+	if (type === 'postgres') {
+		return `
+			SELECT column_name AS name
+			FROM information_schema.columns
+			WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+				AND table_name = ${sqlString(tableName)}
+			ORDER BY ordinal_position
+		`;
+	}
+
+	if (type === 'mysql') {
+		return `
+			SELECT column_name AS name
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+				AND table_name = ${sqlString(tableName)}
+			ORDER BY ordinal_position
+		`;
+	}
+
+	return `PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`;
+}
+
+function sqlString(value: string) {
+	return `'${value.replace(/'/g, "''")}'`;
+}
+
+function quoteSqliteIdentifier(value: string) {
+	return `"${value.replace(/"/g, '""')}"`;
 }
 
 async function runPostgresQuery(connectionString: string, sql: string) {
