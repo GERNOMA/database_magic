@@ -23,7 +23,7 @@
 </script>
 
 <svelte:head>
-	<title>Metadata | Database Magic</title>
+	<title>Metadatos | Database Magic</title>
 </svelte:head>
 
 {#if form?.error}
@@ -36,26 +36,26 @@
 	<div
 		class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
 	>
-		Metadata saved.
+		Metadatos guardados.
 	</div>
 {/if}
 
 <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
 		<form method="POST" action="?/addTable" class="space-y-3">
-			<label class="text-sm font-medium text-stone-700" for="table-name">Add table</label>
+			<label class="text-sm font-medium text-stone-700" for="table-name">Agregar tabla</label>
 			<div class="flex gap-2">
 				<input
 					id="table-name"
 					name="name"
-					placeholder="customers"
+					placeholder="clientes"
 					class="min-w-0 flex-1 rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-stone-500"
 				/>
 				<button
 					class="inline-flex items-center gap-2 rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
 				>
 					<span aria-hidden="true">+</span>
-					Add
+					Agregar
 				</button>
 			</div>
 		</form>
@@ -64,7 +64,7 @@
 			<button
 				class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-white"
 			>
-				Auto import
+				Importar automáticamente
 			</button>
 		</form>
 
@@ -94,13 +94,13 @@
 									: 'border-red-200 text-red-600 hover:bg-red-50'
 							}`}
 						>
-							Delete
+							Eliminar
 						</button>
 					</form>
 				</div>
 			{:else}
 				<p class="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
-					Add your first table to start collecting context.
+					Agrega tu primera tabla para empezar a recopilar contexto.
 				</p>
 			{/each}
 		</div>
@@ -110,8 +110,10 @@
 		<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
 			<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div>
-					<p class="text-sm text-stone-500">Selected table</p>
-					<h1 class="mt-1 text-2xl font-semibold">{selectedTable?.name ?? 'No table selected'}</h1>
+					<p class="text-sm text-stone-500">Tabla seleccionada</p>
+					<h1 class="mt-1 text-2xl font-semibold">
+						{selectedTable?.name ?? 'No hay ninguna tabla seleccionada'}
+					</h1>
 				</div>
 
 				{#if selectedTable}
@@ -122,7 +124,7 @@
 								<button
 									class="h-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
 								>
-									Automatic file
+									Archivo automático
 								</button>
 							</form>
 						{/if}
@@ -141,7 +143,7 @@
 							<button
 								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
 							>
-								+ Add file
+								+ Agregar archivo
 							</button>
 						</form>
 					</div>
@@ -162,7 +164,7 @@
 								<button
 									class="rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
 								>
-									Delete
+									Eliminar
 								</button>
 							</form>
 						</div>
@@ -172,7 +174,7 @@
 					<p
 						class="rounded-2xl border border-dashed border-stone-200 p-5 text-sm text-stone-500 md:col-span-2"
 					>
-						Files you add for this table will appear here.
+						Los archivos que agregues para esta tabla aparecerán aquí.
 					</p>
 				{/each}
 			</div>
@@ -182,9 +184,10 @@
 			<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
 				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<div>
-						<h2 class="text-lg font-semibold">Generated metadata</h2>
+						<h2 class="text-lg font-semibold">Metadatos generados</h2>
 						<p class="text-sm text-stone-500">
-							{selectedMetadata?.fileName ?? 'Run analysis to create a metadata JSON file.'}
+							{selectedMetadata?.fileName ??
+								'Ejecuta el análisis para crear un archivo JSON de metadatos.'}
 						</p>
 					</div>
 					{#if selectedTable}
@@ -193,7 +196,7 @@
 							<button
 								class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
 							>
-								Analyze files
+								Analizar archivos
 							</button>
 						</form>
 					{/if}
@@ -213,7 +216,7 @@
 							<button
 								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
 							>
-								Save metadata
+								Guardar metadatos
 							</button>
 						</div>
 					</form>
@@ -224,20 +227,20 @@
 			</div>
 
 			<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-				<h2 class="text-lg font-semibold">Compile</h2>
+				<h2 class="text-lg font-semibold">Compilar</h2>
 				<p class="mt-2 text-sm text-stone-500">
-					Build a master JSON from every table that already has metadata.
+					Crea un JSON maestro a partir de todas las tablas que ya tienen metadatos.
 				</p>
 				<form method="POST" action="?/compileAll" class="mt-5">
 					<button
 						class="w-full rounded-2xl bg-stone-950 px-4 py-3 text-sm font-medium text-white hover:bg-stone-800"
 					>
-						Compile all
+						Compilar todo
 					</button>
 				</form>
 				{#if data.compiled}
 					<p class="mt-4 text-xs text-stone-500">
-						Latest: <span class="font-medium text-stone-700">{data.compiled.fileName}</span>
+						Último: <span class="font-medium text-stone-700">{data.compiled.fileName}</span>
 					</p>
 				{/if}
 			</div>

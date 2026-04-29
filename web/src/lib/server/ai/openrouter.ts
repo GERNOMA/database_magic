@@ -49,7 +49,7 @@ export async function createOpenRouterChatCompletion(
 	options: OpenRouterOptions = {}
 ) {
 	if (!env.OPENROUTER_API_KEY) {
-		throw new Error('OPENROUTER_API_KEY is not set');
+		throw new Error('OPENROUTER_API_KEY no está configurada');
 	}
 
 	const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -72,11 +72,11 @@ export async function createOpenRouterChatCompletion(
 	const body = (await response.json()) as OpenRouterResponse;
 
 	if (!response.ok) {
-		throw new Error(body.error?.message ?? 'OpenRouter request failed');
+		throw new Error(body.error?.message ?? 'La solicitud a OpenRouter falló');
 	}
 
 	const message = body.choices?.[0]?.message;
-	if (!message) throw new Error('OpenRouter returned an empty response');
+	if (!message) throw new Error('OpenRouter devolvió una respuesta vacía');
 
 	return message;
 }
@@ -87,7 +87,7 @@ export async function askOpenRouter(
 ) {
 	const message = await createOpenRouterChatCompletion(messages, options);
 	const content = message.content?.trim();
-	if (!content) throw new Error('OpenRouter returned an empty response');
+	if (!content) throw new Error('OpenRouter devolvió una respuesta vacía');
 
 	return content;
 }

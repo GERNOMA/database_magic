@@ -22,7 +22,7 @@ const MAX_TOOL_CALL_ROUNDS = 3;
 
 function createTitle(question: string) {
 	const compact = question.replace(/\s+/g, ' ').trim();
-	return compact.length > 52 ? `${compact.slice(0, 49)}...` : compact || 'New chat';
+	return compact.length > 52 ? `${compact.slice(0, 49)}...` : compact || 'Nuevo chat';
 }
 
 function createQueryDatabaseTool(dialect: string): OpenRouterTool {
@@ -30,14 +30,14 @@ function createQueryDatabaseTool(dialect: string): OpenRouterTool {
 		type: 'function',
 		function: {
 			name: QUERY_DATABASE_TOOL_NAME,
-			description: `Run one read-only ${dialect} SQL query against the connected database and return rows as JSON. Use this only when live database values are needed to answer the user.`,
+			description: `Ejecuta una consulta SQL ${dialect} de solo lectura contra la base de datos conectada y devuelve las filas como JSON. Usa esto solo cuando se necesiten valores actuales de la base de datos para responder al usuario.`,
 			parameters: {
 				type: 'object',
 				properties: {
 					sql: {
 						type: 'string',
 						description:
-							'One read-only SELECT or WITH statement. Do not include comments, mutations, PRAGMAs, or multiple statements. Add a LIMIT for broad result sets.'
+							'Una sentencia SELECT o WITH de solo lectura. No incluyas comentarios, mutaciones, PRAGMAs ni varias sentencias. Agrega un LIMIT para conjuntos de resultados amplios.'
 					}
 				},
 				required: ['sql'],
@@ -50,7 +50,7 @@ function createQueryDatabaseTool(dialect: string): OpenRouterTool {
 function parseQueryDatabaseArgs(value: string) {
 	const parsed = JSON.parse(value) as { sql?: unknown };
 	if (typeof parsed.sql !== 'string' || parsed.sql.trim().length === 0) {
-		throw new Error('The SQL tool call did not include a query.');
+		throw new Error('La llamada a la herramienta SQL no incluyó una consulta.');
 	}
 	return { sql: extractReadOnlySql(parsed.sql) };
 }
@@ -86,20 +86,23 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const question = String(form.get('question') ?? '').trim();
 		const chatId = Number(form.get('chatId') ?? 0);
-		if (!question) return fail(400, { error: 'Ask a question first.' });
+		if (!question) return fail(400, { error: 'Primero haz una pregunta.' });
 
 		const [connection] = await db
 			.select()
 			.from(databaseConnections)
 			.orderBy(desc(databaseConnections.updatedAt))
 			.limit(1);
-		if (!connection) return fail(400, { error: 'Connect a database before asking questions.' });
+		if (!connection)
+			return fail(400, { error: 'Conecta una base de datos antes de hacer preguntas.' });
 		if (!isDatabaseType(connection.type))
-			return fail(400, { error: 'Choose a supported database type before asking questions.' });
+			return fail(400, {
+				error: 'Elige un tipo de base de datos compatible antes de hacer preguntas.'
+			});
 
 		const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 		if (metadataRows.length === 0)
-			return fail(400, { error: 'Generate metadata before asking questions.' });
+			return fail(400, { error: 'Genera metadatos antes de hacer preguntas.' });
 
 		try {
 			const timestamp = now();
@@ -112,7 +115,7 @@ export const actions: Actions = {
 					.from(askChats)
 					.where(eq(askChats.id, activeChatId))
 					.limit(1);
-				if (!chat) return fail(404, { error: 'Chat not found.' });
+				if (!chat) return fail(404, { error: 'No se encontró el chat.' });
 				previousMessages = await db
 					.select()
 					.from(askMessages)
@@ -126,19 +129,19 @@ export const actions: Actions = {
 				.slice(-10)
 				.map((message) => {
 					if (message.role === 'assistant') {
-						return `Assistant: ${message.content}${message.sql ? `\nSQL: ${message.sql}` : ''}`;
+						return `Asistente: ${message.content}${message.sql ? `\nSQL: ${message.sql}` : ''}`;
 					}
-					return `User: ${message.content}`;
+					return `Usuario: ${message.content}`;
 				})
 				.join('\n\n');
 			const modelMessages: OpenRouterMessage[] = [
 				{
 					role: 'system',
-					content: `You are a read-only database assistant for ${dialect}. Answer from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If you call it, use one SELECT or WITH statement only and limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
+					content: `Eres un asistente de base de datos de solo lectura para ${dialect}. Responde en español a partir de los metadatos de la base de datos y del chat anterior cuando eso sea suficiente. Puedes llamar a ${QUERY_DATABASE_TOOL_NAME} cuando se necesiten valores actuales de la base de datos, pero la herramienta es opcional. Si la llamas, usa solo una sentencia SELECT o WITH y limita los conjuntos de resultados amplios a ${MAX_TOOL_ROWS} filas. Después de cualquier resultado de herramienta, da una respuesta humana concisa y no inventes hechos fuera del resultado.`
 				},
 				{
 					role: 'user',
-					content: `Database metadata:\n${metadataContext}\n\nPrior chat:\n${chatContext || 'No prior messages.'}\n\nQuestion: ${question}`
+					content: `Metadatos de la base de datos:\n${metadataContext}\n\nChat anterior:\n${chatContext || 'No hay mensajes anteriores.'}\n\nPregunta: ${question}`
 				}
 			];
 			let answer = '';
@@ -167,7 +170,9 @@ export const actions: Actions = {
 						modelMessages.push({
 							role: 'tool',
 							tool_call_id: toolCall.id,
-							content: JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` })
+							content: JSON.stringify({
+								error: `Herramienta desconocida: ${toolCall.function.name}`
+							})
 						});
 						continue;
 					}
@@ -178,8 +183,8 @@ export const actions: Actions = {
 							connection.type,
 							connection.connectionString,
 							args.sql
-						); 
-						if(sql != null) sql += `\n--- ---\n${args.sql}`;
+						);
+						if (sql != null) sql += `\n--- ---\n${args.sql}`;
 						else sql = args.sql;
 						rows = queryRows;
 						modelMessages.push({
@@ -192,14 +197,15 @@ export const actions: Actions = {
 							role: 'tool',
 							tool_call_id: toolCall.id,
 							content: JSON.stringify({
-								error: error instanceof Error ? error.message : 'Could not run the SQL query.'
+								error:
+									error instanceof Error ? error.message : 'No se pudo ejecutar la consulta SQL.'
 							})
 						});
 					}
 				}
 			}
 
-			if (!answer) throw new Error('OpenRouter did not return an answer.');
+			if (!answer) throw new Error('OpenRouter no devolvió una respuesta.');
 
 			if (!activeChatId) {
 				const [created] = await db
@@ -229,7 +235,7 @@ export const actions: Actions = {
 		} catch (error) {
 			if (isRedirect(error)) throw error;
 			return fail(500, {
-				error: error instanceof Error ? error.message : 'Could not answer the question.'
+				error: error instanceof Error ? error.message : 'No se pudo responder la pregunta.'
 			});
 		}
 	},
@@ -237,7 +243,7 @@ export const actions: Actions = {
 	deleteChat: async ({ request }) => {
 		const form = await request.formData();
 		const chatId = Number(form.get('chatId'));
-		if (!chatId) return fail(400, { error: 'Could not delete that chat.' });
+		if (!chatId) return fail(400, { error: 'No se pudo eliminar ese chat.' });
 
 		await db.delete(askChats).where(eq(askChats.id, chatId));
 

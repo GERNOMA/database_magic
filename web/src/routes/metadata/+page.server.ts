@@ -59,7 +59,7 @@ export const actions: Actions = {
 	addTable: async ({ request }) => {
 		const form = await request.formData();
 		const name = cleanName(String(form.get('name') ?? ''));
-		if (!name) return fail(400, { error: 'Table name is required.' });
+		if (!name) return fail(400, { error: 'El nombre de la tabla es obligatorio.' });
 
 		const timestamp = now();
 		let createdId: number;
@@ -70,7 +70,7 @@ export const actions: Actions = {
 				.returning();
 			createdId = created.id;
 		} catch {
-			return fail(400, { error: 'A table with that name already exists.' });
+			return fail(400, { error: 'Ya existe una tabla con ese nombre.' });
 		}
 		throw redirect(303, `/metadata?table=${createdId}`);
 	},
@@ -78,7 +78,7 @@ export const actions: Actions = {
 	deleteTable: async ({ request }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
-		if (!tableId) return fail(400, { error: 'Could not delete that table.' });
+		if (!tableId) return fail(400, { error: 'No se pudo eliminar esa tabla.' });
 
 		await db.delete(metadataTables).where(eq(metadataTables.id, tableId));
 
@@ -91,9 +91,12 @@ export const actions: Actions = {
 			.from(databaseConnections)
 			.orderBy(desc(databaseConnections.updatedAt))
 			.limit(1);
-		if (!connection) return fail(400, { error: 'Connect a database before importing tables.' });
+		if (!connection)
+			return fail(400, { error: 'Conecta una base de datos antes de importar tablas.' });
 		if (!isDatabaseType(connection.type)) {
-			return fail(400, { error: 'Choose a supported database type before importing tables.' });
+			return fail(400, {
+				error: 'Elige un tipo de base de datos compatible antes de importar tablas.'
+			});
 		}
 
 		let databaseTableNames: string[];
@@ -104,7 +107,10 @@ export const actions: Actions = {
 			);
 		} catch (error) {
 			return fail(500, {
-				error: error instanceof Error ? error.message : 'Could not import database tables.'
+				error:
+					error instanceof Error
+						? error.message
+						: 'No se pudieron importar las tablas de la base de datos.'
 			});
 		}
 
@@ -131,9 +137,9 @@ export const actions: Actions = {
 		const tableId = Number(form.get('tableId'));
 		const file = form.get('file');
 
-		if (!tableId) return fail(400, { error: 'Select a table before adding files.' });
+		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de agregar archivos.' });
 		if (!(file instanceof File) || file.size === 0)
-			return fail(400, { error: 'Choose a file to upload.' });
+			return fail(400, { error: 'Elige un archivo para subir.' });
 
 		await db.insert(tableFiles).values({
 			tableId,
@@ -149,35 +155,46 @@ export const actions: Actions = {
 	addAutomaticFile: async ({ request }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
-		if (!tableId) return fail(400, { error: 'Select a table before adding files.' });
+		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de agregar archivos.' });
 
 		const [table] = await db
 			.select()
 			.from(metadataTables)
 			.where(eq(metadataTables.id, tableId))
 			.limit(1);
-		if (!table) return fail(404, { error: 'Table not found.' });
+		if (!table) return fail(404, { error: 'No se encontró la tabla.' });
 
 		const [connection] = await db
 			.select()
 			.from(databaseConnections)
 			.orderBy(desc(databaseConnections.updatedAt))
 			.limit(1);
-		if (!connection) return fail(400, { error: 'Connect a database before adding an automatic file.' });
+		if (!connection)
+			return fail(400, {
+				error: 'Conecta una base de datos antes de agregar un archivo automático.'
+			});
 		if (!isDatabaseType(connection.type)) {
-			return fail(400, { error: 'Choose a supported database type before adding an automatic file.' });
+			return fail(400, {
+				error: 'Elige un tipo de base de datos compatible antes de agregar un archivo automático.'
+			});
 		}
 
 		let fields: string[];
 		try {
-			fields = await listDatabaseTableFields(connection.type, connection.connectionString, table.name);
+			fields = await listDatabaseTableFields(
+				connection.type,
+				connection.connectionString,
+				table.name
+			);
 		} catch (error) {
 			return fail(500, {
-				error: error instanceof Error ? error.message : 'Could not read table fields.'
+				error:
+					error instanceof Error ? error.message : 'No se pudieron leer los campos de la tabla.'
 			});
 		}
 
-		if (fields.length === 0) return fail(400, { error: 'No fields found for that table.' });
+		if (fields.length === 0)
+			return fail(400, { error: 'No se encontraron campos para esa tabla.' });
 
 		await db.insert(tableFiles).values({
 			tableId,
@@ -195,7 +212,7 @@ export const actions: Actions = {
 		const fileId = Number(form.get('fileId'));
 		const tableId = Number(form.get('tableId'));
 
-		if (!fileId || !tableId) return fail(400, { error: 'Could not delete that file.' });
+		if (!fileId || !tableId) return fail(400, { error: 'No se pudo eliminar ese archivo.' });
 
 		await db.delete(tableFiles).where(eq(tableFiles.id, fileId));
 
@@ -205,7 +222,7 @@ export const actions: Actions = {
 	analyzeTable: async ({ request }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
-		if (!tableId) return fail(400, { error: 'Select a table to analyze.' });
+		if (!tableId) return fail(400, { error: 'Selecciona una tabla para analizar.' });
 
 		const [table] = await db
 			.select()
@@ -213,8 +230,9 @@ export const actions: Actions = {
 			.where(eq(metadataTables.id, tableId))
 			.limit(1);
 		const files = await db.select().from(tableFiles).where(eq(tableFiles.tableId, tableId));
-		if (!table) return fail(404, { error: 'Table not found.' });
-		if (files.length === 0) return fail(400, { error: 'Add at least one file before analyzing.' });
+		if (!table) return fail(404, { error: 'No se encontró la tabla.' });
+		if (files.length === 0)
+			return fail(400, { error: 'Agrega al menos un archivo antes de analizar.' });
 
 		try {
 			const response = await askOpenRouter(
@@ -222,11 +240,11 @@ export const actions: Actions = {
 					{
 						role: 'system',
 						content:
-							'You analyze database context files and return strict JSON only. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
+							'Analiza archivos de contexto de base de datos y devuelve solo JSON estricto. Escribe las descripciones en español. La forma del JSON debe ser {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
 					},
 					{
 						role: 'user',
-						content: `Analyze the table named "${table.name}". Use these files as context:\n\n${files
+						content: `Analiza la tabla llamada "${table.name}". Usa estos archivos como contexto:\n\n${files
 							.map((file) => `--- ${file.name} ---\n${file.content}`)
 							.join('\n\n')}`
 					}
@@ -252,7 +270,7 @@ export const actions: Actions = {
 				});
 		} catch (error) {
 			return fail(500, {
-				error: error instanceof Error ? error.message : 'Could not analyze table.'
+				error: error instanceof Error ? error.message : 'No se pudo analizar la tabla.'
 			});
 		}
 		throw redirect(303, `/metadata?table=${tableId}`);
@@ -263,15 +281,15 @@ export const actions: Actions = {
 		const tableId = Number(form.get('tableId'));
 		const json = String(form.get('json') ?? '').trim();
 
-		if (!tableId) return fail(400, { error: 'Select a table before saving metadata.' });
-		if (!json) return fail(400, { error: 'Metadata JSON cannot be empty.' });
+		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de guardar metadatos.' });
+		if (!json) return fail(400, { error: 'El JSON de metadatos no puede estar vacío.' });
 
 		const [metadata] = await db
 			.select()
 			.from(tableMetadata)
 			.where(eq(tableMetadata.tableId, tableId))
 			.limit(1);
-		if (!metadata) return fail(404, { error: 'Generate metadata before editing it.' });
+		if (!metadata) return fail(404, { error: 'Genera metadatos antes de editarlos.' });
 
 		try {
 			const parsed = extractJson<MetadataJson>(json);
@@ -280,7 +298,7 @@ export const actions: Actions = {
 				.set({ json: JSON.stringify(parsed, null, 2), updatedAt: now() })
 				.where(eq(tableMetadata.tableId, tableId));
 		} catch {
-			return fail(400, { error: 'Metadata must be valid JSON before it can be saved.' });
+			return fail(400, { error: 'Los metadatos deben ser JSON válido antes de poder guardarse.' });
 		}
 
 		throw redirect(303, `/metadata?table=${tableId}&saved=1`);

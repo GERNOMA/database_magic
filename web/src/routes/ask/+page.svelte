@@ -48,7 +48,7 @@
 	};
 
 	function formatDate(value: string) {
-		return new Intl.DateTimeFormat(undefined, {
+		return new Intl.DateTimeFormat('es', {
 			month: 'short',
 			day: 'numeric',
 			hour: 'numeric',
@@ -68,21 +68,21 @@
 </script>
 
 <svelte:head>
-	<title>Ask | Database Magic</title>
+	<title>Preguntar | Database Magic</title>
 </svelte:head>
 
 <div class="grid min-h-[calc(100vh-10rem)] gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="flex flex-col rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
 		<div class="flex items-center justify-between gap-3">
 			<div>
-				<p class="text-sm text-stone-500">Saved chats</p>
-				<h2 class="text-lg font-semibold">Ask history</h2>
+				<p class="text-sm text-stone-500">Chats guardados</p>
+				<h2 class="text-lg font-semibold">Historial de preguntas</h2>
 			</div>
 			<a
 				href={resolve('/ask')}
 				class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
 			>
-				New
+				Nuevo
 			</a>
 		</div>
 
@@ -116,15 +116,15 @@
 									? 'border-white/25 text-white hover:bg-white/10'
 									: 'border-red-200 text-red-600 hover:bg-red-50'
 							}`}
-							aria-label={`Delete ${chat.title}`}
+							aria-label={`Eliminar ${chat.title}`}
 						>
-							Delete
+							Eliminar
 						</button>
 					</form>
 				</div>
 			{:else}
 				<p class="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
-					Your saved conversations will appear here.
+					Tus conversaciones guardadas aparecerán aquí.
 				</p>
 			{/each}
 		</div>
@@ -136,18 +136,19 @@
 		<header class="border-b border-stone-200 p-5">
 			<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div>
-					<p class="text-sm text-stone-500">Read-only database assistant</p>
+					<p class="text-sm text-stone-500">Asistente de base de datos de solo lectura</p>
 					<h1 class="mt-1 text-2xl font-semibold">
-						{data.selectedChat?.title ?? 'Ask your data'}
+						{data.selectedChat?.title ?? 'Pregunta a tus datos'}
 					</h1>
 					<p class="mt-2 max-w-2xl text-sm leading-6 text-stone-500">
-						Ask follow-up questions, revisit past answers, and keep each thread available for later.
+						Haz preguntas de seguimiento, revisa respuestas anteriores y conserva cada hilo para más
+						tarde.
 					</p>
 				</div>
 				<div
 					class="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs text-stone-500"
 				>
-					SQL is generated as read-only queries and limited to one statement.
+					El SQL se genera como consultas de solo lectura y se limita a una sentencia.
 				</div>
 			</div>
 
@@ -174,7 +175,7 @@
 							<p class="text-sm font-semibold text-stone-700">Database Magic</p>
 							{#if message.rowsJson}
 								<span class="rounded-full bg-stone-100 px-3 py-1 text-xs text-stone-500">
-									{rowCount(message.rowsJson)} rows
+									{rowCount(message.rowsJson)} filas
 								</span>
 							{/if}
 						</div>
@@ -184,7 +185,7 @@
 						{#if message.sql}
 							<details class="mt-4 rounded-2xl border border-stone-200 bg-stone-950 p-4">
 								<summary class="cursor-pointer text-sm font-medium text-stone-100">
-									View generated SQL
+									Ver SQL generado
 								</summary>
 								<pre class="mt-3 overflow-auto text-xs leading-6 text-stone-100">{message.sql}</pre>
 							</details>
@@ -196,11 +197,11 @@
 					class="flex h-full min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-stone-200 bg-white"
 				>
 					<div class="max-w-md px-6 text-center">
-						<p class="text-sm font-medium text-stone-500">Start a conversation</p>
-						<h2 class="mt-2 text-3xl font-semibold tracking-tight">What do you want to know?</h2>
+						<p class="text-sm font-medium text-stone-500">Inicia una conversación</p>
+						<h2 class="mt-2 text-3xl font-semibold tracking-tight">¿Qué quieres saber?</h2>
 						<p class="mt-3 text-sm leading-6 text-stone-500">
-							Try asking for trends, rankings, anomalies, or summaries from the database metadata
-							you created.
+							Prueba preguntar por tendencias, información o resúmenes a partir de los metadatos de
+							base de datos que creaste.
 						</p>
 					</div>
 				</div>
@@ -208,16 +209,23 @@
 			{#if isWaitingForAnswer}
 				<div class="max-w-3xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
 					<p class="text-sm font-semibold text-stone-700">Database Magic</p>
-					<div class="mt-4 flex items-center gap-1" aria-label="Database Magic is typing">
+					<div class="mt-4 flex items-center gap-1" aria-label="Database Magic está escribiendo">
 						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400"></span>
-						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:150ms]"></span>
-						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:300ms]"></span>
+						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:150ms]"
+						></span>
+						<span class="typing-dot h-2 w-2 rounded-full bg-stone-400 [animation-delay:300ms]"
+						></span>
 					</div>
 				</div>
 			{/if}
 		</div>
 
-		<form method="POST" action="?/ask" class="border-t border-stone-200 p-5" use:enhance={handleAskSubmit}>
+		<form
+			method="POST"
+			action="?/ask"
+			class="border-t border-stone-200 p-5"
+			use:enhance={handleAskSubmit}
+		>
 			<input type="hidden" name="chatId" value={data.selectedChat?.id ?? ''} />
 			<div
 				class="rounded-3xl border border-stone-200 bg-stone-50 p-2 focus-within:border-stone-500"
@@ -227,18 +235,20 @@
 					bind:value={question}
 					disabled={isWaitingForAnswer}
 					rows="3"
-					placeholder="Ask a follow-up, like: why did that change?"
+					placeholder="Haz una pregunta de seguimiento, por ejemplo: ¿por qué cambió eso?"
 					class="max-h-48 w-full resize-y border-0 bg-transparent p-3 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-stone-400"
 				></textarea>
 				<div class="flex items-center justify-between gap-3 px-2 pb-2">
 					<p class="text-xs text-stone-500">
-						{data.selectedChat ? 'Continuing this chat' : 'A new chat will be saved automatically'}
+						{data.selectedChat
+							? 'Continuando este chat'
+							: 'Se guardará un chat nuevo automáticamente'}
 					</p>
 					<button
 						disabled={isWaitingForAnswer}
 						class="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
 					>
-						{isWaitingForAnswer ? 'Sending...' : 'Send'}
+						{isWaitingForAnswer ? 'Enviando...' : 'Enviar'}
 					</button>
 				</div>
 			</div>

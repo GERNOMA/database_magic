@@ -18,10 +18,10 @@ export function extractReadOnlySql(value: string) {
 	const fenced = value.match(/```(?:sql)?\s*([\s\S]*?)```/i)?.[1] ?? value;
 	const sql = fenced.trim().replace(/;+\s*$/, '');
 	if (!/^(select|with)\b/i.test(sql)) {
-		throw new Error('The AI did not provide a read-only SELECT query.');
+		throw new Error('La IA no proporcionó una consulta SELECT de solo lectura.');
 	}
 	if (sql.includes(';')) {
-		throw new Error('Only one SQL statement can be executed.');
+		throw new Error('Solo se puede ejecutar una sentencia SQL.');
 	}
 	return sql;
 }
