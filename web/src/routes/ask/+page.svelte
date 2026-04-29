@@ -12,8 +12,8 @@
 <section class="mx-auto max-w-3xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
 	<h1 class="text-2xl font-semibold">Ask your data</h1>
 	<p class="mt-2 text-sm text-stone-500">
-		The AI writes a read-only SQL query, executes it against your connected SQLite database, then
-		explains the result.
+		The AI writes a read-only SQL query for your connected database, executes it, then explains the
+		result.
 	</p>
 
 	{#if form?.error}

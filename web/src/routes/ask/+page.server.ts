@@ -1,8 +1,8 @@
 import { fail } from '@sveltejs/kit';
-import Database from 'better-sqlite3';
 import { asc, desc } from 'drizzle-orm';
 import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
+import { getDialectName, isDatabaseType, runReadOnlyQuery } from '$lib/server/db/query-runner';
 import { databaseConnections, tableMetadata } from '$lib/server/db/schema';
 import type { Actions } from './$types';
 
@@ -18,13 +18,6 @@ function extractSql(value: string) {
 	return sql;
 }
 
-function getReadableSqlite(connectionString: string) {
-	return new Database(connectionString, {
-		readonly: true,
-		fileMustExist: true
-	});
-}
-
 export const actions: Actions = {
 	ask: async ({ request }) => {
 		const form = await request.formData();
@@ -36,8 +29,9 @@ export const actions: Actions = {
 			.from(databaseConnections)
 			.orderBy(desc(databaseConnections.updatedAt))
 			.limit(1);
-		if (!connection)
-			return fail(400, { error: 'Connect a SQLite database before asking questions.' });
+		if (!connection) return fail(400, { error: 'Connect a database before asking questions.' });
+		if (!isDatabaseType(connection.type))
+			return fail(400, { error: 'Choose a supported database type before asking questions.' });
 
 		const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 		if (metadataRows.length === 0)
@@ -45,11 +39,11 @@ export const actions: Actions = {
 
 		try {
 			const metadataContext = metadataRows.map((row) => row.json).join('\n\n');
+			const dialect = getDialectName(connection.type);
 			const sqlResponse = await askOpenRouter([
 				{
 					role: 'system',
-					content:
-						'You write SQLite SQL for read-only analysis. Return only one SELECT statement or one WITH statement. Do not include markdown, comments, explanations, mutations, PRAGMAs, or multiple statements. Limit large result sets to 100 rows.'
+					content: `You write ${dialect} SQL for read-only analysis. Return only one SELECT statement or one WITH statement. Do not include markdown, comments, explanations, mutations, PRAGMAs, or multiple statements. Limit large result sets to 100 rows.`
 				},
 				{
 					role: 'user',
@@ -57,13 +51,7 @@ export const actions: Actions = {
 				}
 			]);
 			const sql = extractSql(sqlResponse);
-			const readDb = getReadableSqlite(connection.connectionString);
-			let rows: Array<Record<string, unknown>>;
-			try {
-				rows = readDb.prepare(sql).all() as Array<Record<string, unknown>>;
-			} finally {
-				readDb.close();
-			}
+			const rows = await runReadOnlyQuery(connection.type, connection.connectionString, sql);
 
 			const answer = await askOpenRouter([
 				{
