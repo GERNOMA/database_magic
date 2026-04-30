@@ -273,7 +273,7 @@
 					>
 						<div class="max-w-md px-6 text-center">
 							<p class="text-sm font-medium text-stone-500">Inicia una conversación</p>
-							<h2 class="mt-2 text-3xl font-semibold tracking-tight">¿Qué quieres saberaaa?</h2>
+							<h2 class="mt-2 text-3xl font-semibold tracking-tight">¿Qué quieres saber?</h2>
 							<p class="mt-3 text-sm leading-6 text-stone-500">
 								Prueba preguntar por tendencias, información o resúmenes a partir de los metadatos
 								de base de datos que creaste.
