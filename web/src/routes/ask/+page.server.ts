@@ -12,13 +12,25 @@ import {
 	isDatabaseType,
 	runReadOnlyQuery
 } from '$lib/server/db/query-runner';
-import { askChats, askMessages, databaseConnections, tableMetadata } from '$lib/server/db/schema';
+import {
+	askChats,
+	askMessages,
+	databaseConnections,
+	metadataTables,
+	tableMetadata
+} from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
 const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
 const MAX_TOOL_ROWS = 100;
 const MAX_TOOL_CALL_ROUNDS = 3;
+
+type MetadataJson = {
+	tableName: string;
+	generalDescription: string;
+	fields: Array<{ name: string; description: string }>;
+};
 
 function createTitle(question: string) {
 	const compact = question.replace(/\s+/g, ' ').trim();
@@ -66,8 +78,48 @@ function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
 	};
 }
 
+function parseSelectedTableIds(value: string | null) {
+	if (!value) return [];
+	try {
+		const parsed = JSON.parse(value);
+		return Array.isArray(parsed)
+			? parsed.filter((id): id is number => Number.isInteger(id) && id > 0)
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+function getSelectedTableIds(form: FormData) {
+	return form
+		.getAll('tableIds')
+		.map((value) => Number(value))
+		.filter((id, index, ids) => Number.isInteger(id) && id > 0 && ids.indexOf(id) === index);
+}
+
+function createMetadataContext(rows: Array<typeof tableMetadata.$inferSelect>) {
+	return JSON.stringify(
+		{
+			createdAt: now(),
+			tables: rows.map((row) => JSON.parse(row.json) as MetadataJson)
+		},
+		null,
+		2
+	);
+}
+
 export const load: PageServerLoad = async ({ url }) => {
 	const chats = await db.select().from(askChats).orderBy(desc(askChats.updatedAt));
+	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
+	const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
+	const tablesWithMetadata = new Set(metadataRows.map((row) => row.tableId));
+	const availableTables = tables
+		.filter((table) => tablesWithMetadata.has(table.id))
+		.map((table) => ({
+			id: table.id,
+			name: table.name,
+			label: table.userFriendlyName?.trim() || table.name
+		}));
 	const selectedChatId = Number(url.searchParams.get('chat') ?? 0);
 	const selectedChat = chats.find((chat) => chat.id === selectedChatId);
 	const messages = selectedChat
@@ -78,7 +130,13 @@ export const load: PageServerLoad = async ({ url }) => {
 				.orderBy(asc(askMessages.createdAt), asc(askMessages.id))
 		: [];
 
-	return { chats, selectedChat, messages };
+	return {
+		chats,
+		selectedChat,
+		messages,
+		availableTables,
+		selectedTableIds: parseSelectedTableIds(selectedChat?.selectedTableIdsJson ?? null)
+	};
 };
 
 export const actions: Actions = {
@@ -86,6 +144,7 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const question = String(form.get('question') ?? '').trim();
 		const chatId = Number(form.get('chatId') ?? 0);
+		const selectedTableIds = getSelectedTableIds(form);
 		if (!question) return fail(400, { error: 'Primero haz una pregunta.' });
 
 		const [connection] = await db
@@ -123,7 +182,15 @@ export const actions: Actions = {
 					.orderBy(asc(askMessages.createdAt), asc(askMessages.id));
 			}
 
-			const metadataContext = metadataRows.map((row) => row.json).join('\n\n');
+			const selectedTableIdSet = new Set(selectedTableIds);
+			const rowsForContext =
+				selectedTableIds.length > 0
+					? metadataRows.filter((row) => selectedTableIdSet.has(row.tableId))
+					: metadataRows;
+			if (rowsForContext.length === 0)
+				return fail(400, { error: 'Selecciona tablas que ya tengan metadatos generados.' });
+
+			const metadataContext = createMetadataContext(rowsForContext);
 			const dialect = getDialectName(connection.type);
 			const chatContext = previousMessages
 				.slice(-10)
@@ -209,7 +276,12 @@ export const actions: Actions = {
 			if (!activeChatId) {
 				const [created] = await db
 					.insert(askChats)
-					.values({ title: createTitle(question), createdAt: timestamp, updatedAt: timestamp })
+					.values({
+						title: createTitle(question),
+						selectedTableIdsJson: JSON.stringify(selectedTableIds),
+						createdAt: timestamp,
+						updatedAt: timestamp
+					})
 					.returning();
 				activeChatId = created.id;
 			}
@@ -228,7 +300,13 @@ export const actions: Actions = {
 				rowsJson: rows ? JSON.stringify(rows.slice(0, MAX_TOOL_ROWS)) : null,
 				createdAt: now()
 			});
-			await db.update(askChats).set({ updatedAt: now() }).where(eq(askChats.id, activeChatId));
+			await db
+				.update(askChats)
+				.set({
+					selectedTableIdsJson: JSON.stringify(selectedTableIds),
+					updatedAt: now()
+				})
+				.where(eq(askChats.id, activeChatId));
 
 			throw redirect(303, `/ask?chat=${activeChatId}`);
 		} catch (error) {

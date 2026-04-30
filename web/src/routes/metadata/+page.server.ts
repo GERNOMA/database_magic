@@ -85,6 +85,20 @@ export const actions: Actions = {
 		throw redirect(303, '/metadata');
 	},
 
+	saveTableUserName: async ({ request }) => {
+		const form = await request.formData();
+		const tableId = Number(form.get('tableId'));
+		const userFriendlyName = String(form.get('userFriendlyName') ?? '').trim();
+		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de guardar el nombre.' });
+
+		await db
+			.update(metadataTables)
+			.set({ userFriendlyName: userFriendlyName || null, updatedAt: now() })
+			.where(eq(metadataTables.id, tableId));
+
+		throw redirect(303, `/metadata?table=${tableId}&saved=1`);
+	},
+
 	autoImportTables: async () => {
 		const [connection] = await db
 			.select()
@@ -240,7 +254,7 @@ export const actions: Actions = {
 					{
 						role: 'system',
 						content:
-							'You analyze database context files and return strict JSON only. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
+							'You analyze database context files and return strict JSON only. Write descriptions in Spanish. The JSON shape must be {"tableName": string, "generalDescription": string, "fields": [{"name": string, "description": string}]}'
 					},
 					{
 						role: 'user',

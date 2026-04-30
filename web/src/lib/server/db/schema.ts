@@ -12,6 +12,7 @@ export const databaseConnections = sqliteTable('database_connections', {
 export const metadataTables = sqliteTable('metadata_tables', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull().unique(),
+	userFriendlyName: text('user_friendly_name'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull()
 });
@@ -49,6 +50,7 @@ export const compiledMetadata = sqliteTable('compiled_metadata', {
 export const askChats = sqliteTable('ask_chats', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	title: text('title').notNull(),
+	selectedTableIdsJson: text('selected_table_ids_json').notNull().default('[]'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull()
 });
