@@ -1,4 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
+import { compile } from 'svelte/compiler';
+import { render } from 'svelte/server';
+import type { Component } from 'svelte';
 import type { OpenRouterTool } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
 import {
@@ -15,6 +18,7 @@ const UPDATE_PAGE_CODE_TOOL_NAME = 'update_page_code';
 const MAX_QUERY_ROWS = 500;
 const MAX_EXECUTED_QUERIES = 12;
 const MAX_PAGE_HTML_LENGTH = 300_000_000;
+const TAILWIND_BROWSER_CSS_SCRIPT = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4';
 
 type PageToolArgs = {
 	title?: unknown;
@@ -42,6 +46,21 @@ type PageResult = {
 	html?: unknown;
 };
 
+type SvelteModule = {
+	default: Component<{ data: Record<string, unknown> }>;
+	loadPage?: (
+		helpers: PageLoadHelpers
+	) => Promise<Record<string, unknown>> | Record<string, unknown>;
+};
+
+type PageLoadHelpers = {
+	query: (sqlValue: unknown) => Promise<Array<Record<string, unknown>>>;
+	formatNumber: (value: unknown) => string;
+	Date: DateConstructor;
+	Math: Math;
+	JSON: JSON;
+};
+
 const now = () => new Date().toISOString();
 
 function cleanString(value: unknown, fallback = '') {
@@ -51,9 +70,10 @@ function cleanString(value: unknown, fallback = '') {
 function stripCodeFence(value: string) {
 	const code = value
 		.trim()
-		.replace(/^```(?:js|javascript|ts|typescript)?\s*/i, '')
+		.replace(/^```(?:svelte|sveltekit|js|javascript|ts|typescript)?\s*/i, '')
 		.replace(/```\s*$/i, '')
 		.trim();
+	if (isSveltePageCode(code)) return code;
 	const functionBody = code.match(/^(?:async\s+)?function\s+\w*\s*\([^)]*\)\s*\{([\s\S]*)\}$/);
 	if (functionBody?.[1]) return functionBody[1].trim();
 	return code;
@@ -76,6 +96,10 @@ function sanitizePageHtml(value: string) {
 		.replace(/javascript:/gi, '');
 }
 
+function isSveltePageCode(code: string) {
+	return /<script[\s\S]*?>|<[a-zA-Z][\s\S]*?>|{#(?:if|each|await)\b/.test(code);
+}
+
 function validatePageCode(code: string) {
 	const forbidden = [
 		/\bimport\b/,
@@ -91,12 +115,27 @@ function validatePageCode(code: string) {
 		/\bglobal\b/,
 		/\bwindow\b/,
 		/\bdocument\b/,
-		/<script/i
+		/<script[^>]+\bsrc\s*=/i
 	];
 
 	if (forbidden.some((pattern) => pattern.test(code))) {
 		throw new Error('El código de la página usa APIs no permitidas.');
 	}
+}
+
+function createPreviewDocument(html: string, head = '') {
+	return `<!doctype html>
+<html lang="es">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script src="${TAILWIND_BROWSER_CSS_SCRIPT}"></script>
+	${head}
+</head>
+<body class="min-h-screen bg-white text-stone-950 antialiased">
+	${html}
+</body>
+</html>`;
 }
 
 async function latestConnection() {
@@ -118,7 +157,7 @@ export function createPageTool(dialect: string): OpenRouterTool {
 		type: 'function',
 		function: {
 			name: CREATE_PAGE_TOOL_NAME,
-			description: `Create a saved dynamic ${dialect} web page for the current user. Use it when the user asks you to build a page, dashboard, portal, report, or visual app that should be opened later from Páginas. The stored page is JavaScript function-body code that runs whenever the page is opened and may call query(sql) one or more times.`,
+			description: `Create a saved dynamic ${dialect} SvelteKit web page for the current user. Use it when the user asks you to build a page, dashboard, portal, report, or visual app that should be opened later from Páginas. The stored page is a Svelte component rendered by the app with Tailwind classes. It may export loadPage({ query, formatNumber, Date, Math, JSON }) to run read-only SQL whenever the page opens.`,
 			parameters: {
 				type: 'object',
 				properties: {
@@ -133,12 +172,12 @@ export function createPageTool(dialect: string): OpenRouterTool {
 					pageCode: {
 						type: 'string',
 						description:
-							'JavaScript async function body. Available helpers: await query(sql), escapeHtml(value), formatNumber(value), Date, Math, JSON. It must return { title, html }. The html must be a complete dynamic visual page fragment with inline CSS and no scripts. Every SQL passed to query() must be one read-only SELECT or WITH statement.'
+							'SvelteKit +page.svelte component source using Svelte 5 syntax and Tailwind utility classes. Do not return raw HTML/CSS/JavaScript. Do not use imports, browser APIs, external scripts, or <script lang="ts">. If database data is needed, add <script module>export async function loadPage({ query, formatNumber, Date, Math, JSON }) { const rows = await query("SELECT ..."); return { title: "...", rows }; }</script>. In the component script use let { data } = $props(); and render the data with Svelte markup such as {#each data.rows as row}. Every SQL passed to query() must be one read-only SELECT or WITH statement.'
 					},
 					visualPrompt: {
 						type: 'string',
 						description:
-							'The requested visual page style and behavior in Spanish. Include layout, charts/tables/cards, colors, and interactions that can be rendered without client-side scripts.'
+							'The requested Svelte/Tailwind page style and behavior in Spanish. Include layout, charts/tables/cards, colors, responsive behavior, and any data assumptions.'
 					}
 				},
 				required: ['title', 'description', 'pageCode', 'visualPrompt'],
@@ -170,7 +209,7 @@ export function createUpdatePageCodeTool(): OpenRouterTool {
 		function: {
 			name: UPDATE_PAGE_CODE_TOOL_NAME,
 			description:
-				'Update the JavaScript code of an existing dynamic page owned by the current user. Use list_pages first if the user identifies the page by name instead of id.',
+				'Update the SvelteKit component code of an existing dynamic page owned by the current user. Use list_pages first if the user identifies the page by name instead of id.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -181,7 +220,7 @@ export function createUpdatePageCodeTool(): OpenRouterTool {
 					pageCode: {
 						type: 'string',
 						description:
-							'New JavaScript async function body. Available helpers: await query(sql), escapeHtml(value), formatNumber(value), Date, Math, JSON. It must return { title, html }. The html must use inline CSS and no scripts.'
+							'Full replacement SvelteKit +page.svelte component source using Svelte 5 syntax and Tailwind utility classes. It may export loadPage({ query, formatNumber, Date, Math, JSON }) for read-only SQL data. Do not use raw HTML documents, imports, browser APIs, external scripts, or TypeScript.'
 					}
 				},
 				required: ['pageId', 'pageCode'],
@@ -303,6 +342,40 @@ export async function renderAiPage(page: typeof aiPages.$inferSelect) {
 	};
 	const formatNumber = (value: unknown) =>
 		new Intl.NumberFormat('es').format(Number.isFinite(Number(value)) ? Number(value) : 0);
+	if (isSveltePageCode(page.pageCode)) {
+		const compiled = compile(page.pageCode, {
+			dev: false,
+			generate: 'server',
+			name: `AiPage${page.id}`
+		});
+		const svelteServerUrl = await import.meta.resolve('svelte/internal/server');
+		const moduleCode = compiled.js.code.replace(
+			/from ['"]svelte\/internal\/server['"]/g,
+			`from '${svelteServerUrl}'`
+		);
+		const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(moduleCode)}`;
+		const componentModule = (await import(/* @vite-ignore */ moduleUrl)) as SvelteModule;
+		const data =
+			(await componentModule.loadPage?.({
+				query,
+				formatNumber,
+				Date,
+				Math,
+				JSON
+			})) ?? {};
+		const rendered = render(componentModule.default, { props: { data } });
+		const title = cleanString((data as { title?: unknown }).title, page.title) || page.title;
+		const html = sanitizePageHtml(rendered.html);
+		const head = sanitizePageHtml(rendered.head);
+
+		if (!html) throw new Error('La página Svelte no devolvió contenido.');
+		const previewHtml = createPreviewDocument(html, head);
+		if (previewHtml.length > MAX_PAGE_HTML_LENGTH)
+			throw new Error('La página generada es demasiado grande.');
+
+		return { title, html: previewHtml, executedSql };
+	}
+
 	const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
 		...args: string[]
 	) => (...args: unknown[]) => Promise<PageResult>;
@@ -356,5 +429,5 @@ export async function renderAiPage(page: typeof aiPages.$inferSelect) {
 	if (html.length > MAX_PAGE_HTML_LENGTH)
 		throw new Error('La página generada es demasiado grande.');
 
-	return { title, html, executedSql };
+	return { title, html: createPreviewDocument(html), executedSql };
 }

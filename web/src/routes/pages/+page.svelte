@@ -32,8 +32,8 @@
 			<p class="text-sm font-medium tracking-[0.2em] text-stone-400 uppercase">Webs dinámicas</p>
 			<h1 class="mt-2 text-3xl font-semibold tracking-tight">Páginas</h1>
 			<p class="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
-				Aquí viven las páginas que creó la IA. Cada una ejecuta su código al abrirse y puede
-				consultar la base con SQL de solo lectura para mostrar datos actualizados.
+				Aquí viven las páginas SvelteKit con Tailwind que creó la IA. Cada una ejecuta su carga de
+				datos al abrirse y puede consultar la base con SQL de solo lectura.
 			</p>
 		</div>
 		<a
@@ -54,8 +54,8 @@
 	<div class="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-10 text-center">
 		<h2 class="text-xl font-semibold">Todavía no hay páginas</h2>
 		<p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-stone-500">
-			Pídele al asistente algo como: “crea una página dinámica con resumen de ventas, cards, ranking
-			de productos y una tabla de últimas compras”.
+			Pídele al asistente algo como: “crea una página SvelteKit con Tailwind que muestre resumen de
+			ventas, cards, ranking de productos y una tabla de últimas compras”.
 		</p>
 	</div>
 {:else}

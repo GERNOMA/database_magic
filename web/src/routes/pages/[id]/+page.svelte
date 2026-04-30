@@ -46,7 +46,7 @@
 			<iframe
 				{title}
 				srcdoc={data.rendered.html}
-				sandbox=""
+				sandbox="allow-scripts"
 				class="min-h-[760px] w-full rounded-3xl border border-stone-200 bg-white"
 			></iframe>
 		</div>
@@ -56,7 +56,7 @@
 		<div class="grid gap-px border-t border-stone-800 bg-stone-800 lg:grid-cols-2">
 			<div class="bg-stone-950 p-6 text-stone-100">
 				<p class="text-xs font-medium tracking-[0.18em] text-stone-400 uppercase">
-					Código de la página
+					Código SvelteKit de la página
 				</p>
 				<pre class="mt-3 max-h-[520px] overflow-auto text-sm leading-6 whitespace-pre-wrap">{data
 						.page.pageCode}</pre>
