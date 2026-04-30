@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { asc, desc, eq } from 'drizzle-orm';
+import { withAdminParam } from '$lib/admin';
 import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
 import {
@@ -32,6 +33,8 @@ function extractJson<T>(value: string): T {
 	const withoutFence = value.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '');
 	return JSON.parse(withoutFence) as T;
 }
+
+const adminRedirect = (href: string) => redirect(303, withAdminParam(href));
 
 export const load: PageServerLoad = async ({ url }) => {
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
@@ -72,7 +75,7 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { error: 'Ya existe una tabla con ese nombre.' });
 		}
-		throw redirect(303, `/metadata?table=${createdId}`);
+		throw adminRedirect(`/metadata?table=${createdId}`);
 	},
 
 	deleteTable: async ({ request }) => {
@@ -82,7 +85,7 @@ export const actions: Actions = {
 
 		await db.delete(metadataTables).where(eq(metadataTables.id, tableId));
 
-		throw redirect(303, '/metadata');
+		throw adminRedirect('/metadata');
 	},
 
 	saveTableUserName: async ({ request }) => {
@@ -96,7 +99,7 @@ export const actions: Actions = {
 			.set({ userFriendlyName: userFriendlyName || null, updatedAt: now() })
 			.where(eq(metadataTables.id, tableId));
 
-		throw redirect(303, `/metadata?table=${tableId}&saved=1`);
+		throw adminRedirect(`/metadata?table=${tableId}&saved=1`);
 	},
 
 	autoImportTables: async () => {
@@ -135,7 +138,7 @@ export const actions: Actions = {
 			.filter((name, index, names) => name && names.indexOf(name) === index)
 			.filter((name) => !existingNames.has(name));
 
-		if (namesToImport.length === 0) throw redirect(303, '/metadata');
+		if (namesToImport.length === 0) throw adminRedirect('/metadata');
 
 		const timestamp = now();
 		const importedTables = await db
@@ -143,7 +146,7 @@ export const actions: Actions = {
 			.values(namesToImport.map((name) => ({ name, createdAt: timestamp, updatedAt: timestamp })))
 			.returning();
 
-		throw redirect(303, `/metadata?table=${importedTables[0]?.id ?? ''}`);
+		throw adminRedirect(`/metadata?table=${importedTables[0]?.id ?? ''}`);
 	},
 
 	addFile: async ({ request }) => {
@@ -163,7 +166,7 @@ export const actions: Actions = {
 			createdAt: now()
 		});
 
-		throw redirect(303, `/metadata?table=${tableId}`);
+		throw adminRedirect(`/metadata?table=${tableId}`);
 	},
 
 	addAutomaticFile: async ({ request }) => {
@@ -218,7 +221,7 @@ export const actions: Actions = {
 			createdAt: now()
 		});
 
-		throw redirect(303, `/metadata?table=${tableId}`);
+		throw adminRedirect(`/metadata?table=${tableId}`);
 	},
 
 	deleteFile: async ({ request }) => {
@@ -230,7 +233,7 @@ export const actions: Actions = {
 
 		await db.delete(tableFiles).where(eq(tableFiles.id, fileId));
 
-		throw redirect(303, `/metadata?table=${tableId}`);
+		throw adminRedirect(`/metadata?table=${tableId}`);
 	},
 
 	analyzeTable: async ({ request }) => {
@@ -287,7 +290,7 @@ export const actions: Actions = {
 				error: error instanceof Error ? error.message : 'No se pudo analizar la tabla.'
 			});
 		}
-		throw redirect(303, `/metadata?table=${tableId}`);
+		throw adminRedirect(`/metadata?table=${tableId}`);
 	},
 
 	saveMetadata: async ({ request }) => {
@@ -315,7 +318,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Los metadatos deben ser JSON válido antes de poder guardarse.' });
 		}
 
-		throw redirect(303, `/metadata?table=${tableId}&saved=1`);
+		throw adminRedirect(`/metadata?table=${tableId}&saved=1`);
 	},
 
 	compileAll: async () => {
@@ -331,6 +334,6 @@ export const actions: Actions = {
 			createdAt: compiled.createdAt
 		});
 
-		throw redirect(303, '/metadata?compiled=1');
+		throw adminRedirect('/metadata?compiled=1');
 	}
 };

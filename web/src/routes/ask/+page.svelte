@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import { adminAction, withAdminParam } from '$lib/admin';
 	import { APP_NAME } from '$lib/app';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { ActionData, PageData } from './$types';
@@ -100,12 +101,39 @@
 			return 0;
 		}
 	}
+
+	type RouteHref = Parameters<typeof resolve>[0];
+
+	function withUserParam(href: '/ask' | `/ask?${string}`) {
+		if (!data.currentUser) return href;
+
+		const [pathname, search = ''] = href.split('?', 2);
+		const params = new URLSearchParams(search);
+		params.set('user', data.currentUser);
+		return `${pathname}?${params.toString()}` as '/ask' | `/ask?${string}`;
+	}
+
+	const askHref = (href: '/ask' | `/ask?${string}`) => {
+		const userHref = withUserParam(href);
+		return resolve((data.isAdmin ? withAdminParam(userHref) : userHref) as RouteHref);
+	};
+	const askAction = (actionName: string) => {
+		const action = data.isAdmin ? adminAction(actionName) : `?/${actionName}`;
+		return data.currentUser ? `${action}&user=${encodeURIComponent(data.currentUser)}` : action;
+	};
 </script>
 
 <svelte:head>
 	<title>Preguntar | {APP_NAME}</title>
 </svelte:head>
 
+{#if !data.currentUser}
+	<div class="grid min-h-[calc(100vh-10rem)] place-items-center">
+		<div class="rounded-3xl border border-stone-200 bg-white px-8 py-7 text-center shadow-sm">
+			<h1 class="text-3xl font-semibold tracking-tight text-stone-900">Usuario no ingresado</h1>
+		</div>
+	</div>
+{:else}
 <div class="grid min-h-[calc(100vh-10rem)] gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="flex flex-col rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
 		<div class="flex items-center justify-between gap-3">
@@ -114,7 +142,7 @@
 				<h2 class="text-lg font-semibold">Historial de preguntas</h2>
 			</div>
 			<a
-				href={resolve('/ask')}
+				href={askHref('/ask')}
 				class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
 			>
 				Nuevo
@@ -131,7 +159,7 @@
 					}`}
 				>
 					<a
-						href={resolve(`/ask?chat=${chat.id}`)}
+						href={askHref(`/ask?chat=${chat.id}`)}
 						class={`min-w-0 flex-1 rounded-xl px-3 py-2 ${
 							data.selectedChat?.id === chat.id ? 'text-white' : 'text-stone-700'
 						}`}
@@ -143,7 +171,7 @@
 							}`}>{formatDate(chat.updatedAt)}</span
 						>
 					</a>
-					<form method="POST" action="?/deleteChat">
+					<form method="POST" action={askAction('deleteChat')}>
 						<input type="hidden" name="chatId" value={chat.id} />
 						<button
 							class={`rounded-full border px-3 py-1 text-xs font-medium transition ${
@@ -257,7 +285,7 @@
 
 		<form
 			method="POST"
-			action="?/ask"
+			action={askAction('ask')}
 			class="border-t border-stone-200 p-5"
 			use:enhance={handleAskSubmit}
 		>
@@ -297,8 +325,10 @@
 									class="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-stone-950 py-1 pr-1 pl-3 text-xs font-medium text-white"
 								>
 									<span>{group.label}</span>
-									{#if group.tableIds.length > 1}
-										<span class="rounded-full bg-white/10 px-2 py-0.5 text-[0.65rem] text-stone-200">
+									{#if data.isAdmin && group.tableIds.length > 1}
+										<span
+											class="rounded-full bg-white/10 px-2 py-0.5 text-[0.65rem] text-stone-200"
+										>
 											{group.tableIds.length} tablas
 										</span>
 									{/if}
@@ -345,7 +375,7 @@
 										bind:value={tableSearchQuery}
 										disabled={isWaitingForAnswer}
 										placeholder="Buscar tabla..."
-										class="w-full rounded-2xl border border-stone-200 bg-stone-50 py-2 pr-3 pl-9 text-sm text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+										class="w-full rounded-2xl border border-stone-200 bg-stone-50 py-2 pr-3 pl-9 text-sm text-stone-700 transition outline-none placeholder:text-stone-400 focus:border-stone-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
 									/>
 								</label>
 								<div class="max-h-36 overflow-y-auto pr-1">
@@ -359,12 +389,14 @@
 												onclick={() => addTableGroupToContext(group.id)}
 											>
 												+ {group.label}
-												{#if group.tableIds.length > 1}
+												{#if data.isAdmin && group.tableIds.length > 1}
 													<span class="text-stone-400">({group.tableIds.length})</span>
 												{/if}
 											</button>
 										{:else}
-											<p class="rounded-2xl border border-dashed border-stone-200 p-3 text-sm text-stone-500">
+											<p
+												class="rounded-2xl border border-dashed border-stone-200 p-3 text-sm text-stone-500"
+											>
 												No encontramos tablas con ese nombre.
 											</p>
 										{/each}
@@ -383,6 +415,7 @@
 		</form>
 	</section>
 </div>
+{/if}
 
 <style>
 	.typing-dot {

@@ -61,6 +61,7 @@ client.exec(`
 
 	CREATE TABLE IF NOT EXISTS ask_chats (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_key TEXT NOT NULL DEFAULT '',
 		title TEXT NOT NULL,
 		selected_table_ids_json TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT NOT NULL,
@@ -84,5 +85,6 @@ ensureColumn(
 	'selected_table_ids_json',
 	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
 );
+ensureColumn('ask_chats', 'user_key', "user_key TEXT NOT NULL DEFAULT ''");
 
 export const db = drizzle(client, { schema });

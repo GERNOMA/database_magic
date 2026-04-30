@@ -1,5 +1,6 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { hasAdminParam, withAdminParam } from '$lib/admin';
 import {
 	createOpenRouterChatCompletion,
 	type OpenRouterMessage,
@@ -25,6 +26,7 @@ const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
 const MAX_TOOL_ROWS = 100;
 const MAX_TOOL_CALL_ROUNDS = 3;
+const USER_QUERY_PARAM = 'user';
 
 type MetadataJson = {
 	tableName: string;
@@ -132,6 +134,28 @@ function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
 	};
 }
 
+function getUserParam(url: URL) {
+	const user = url.searchParams.get(USER_QUERY_PARAM)?.trim() ?? '';
+	return user || null;
+}
+
+function withAskParams(url: URL, href: string) {
+	const user = getUserParam(url);
+	const [hrefWithoutHash, hash] = href.split('#', 2);
+	const [pathname, search = ''] = hrefWithoutHash.split('?', 2);
+	const params = new URLSearchParams(search);
+
+	if (user) params.set(USER_QUERY_PARAM, user);
+
+	const nextHref = `${pathname}${params.toString() ? `?${params.toString()}` : ''}${
+		hash ? `#${hash}` : ''
+	}`;
+
+	return hasAdminParam(url) ? withAdminParam(nextHref) : nextHref;
+}
+
+const askRedirect = (url: URL, href: string) => redirect(303, withAskParams(url, href));
+
 function parseSelectedTableIds(value: string | null) {
 	if (!value) return [];
 	try {
@@ -175,7 +199,23 @@ function createMetadataContext(
 }
 
 export const load: PageServerLoad = async ({ url }) => {
-	const chats = await db.select().from(askChats).orderBy(desc(askChats.updatedAt));
+	const currentUser = getUserParam(url);
+	if (!currentUser) {
+		return {
+			currentUser,
+			chats: [],
+			selectedChat: null,
+			messages: [],
+			tableGroups: [],
+			selectedTableIds: []
+		};
+	}
+
+	const chats = await db
+		.select()
+		.from(askChats)
+		.where(eq(askChats.userKey, currentUser))
+		.orderBy(desc(askChats.updatedAt));
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
 	const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 	const tablesWithMetadata = new Set(metadataRows.map((row) => row.tableId));
@@ -191,6 +231,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		: [];
 
 	return {
+		currentUser,
 		chats,
 		selectedChat,
 		messages,
@@ -200,7 +241,10 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	ask: async ({ request }) => {
+	ask: async ({ request, url }) => {
+		const currentUser = getUserParam(url);
+		if (!currentUser) return fail(400, { error: 'Usuario no ingresado.' });
+
 		const form = await request.formData();
 		const question = String(form.get('question') ?? '').trim();
 		const chatId = Number(form.get('chatId') ?? 0);
@@ -235,7 +279,7 @@ export const actions: Actions = {
 				const [chat] = await db
 					.select()
 					.from(askChats)
-					.where(eq(askChats.id, activeChatId))
+					.where(and(eq(askChats.id, activeChatId), eq(askChats.userKey, currentUser)))
 					.limit(1);
 				if (!chat) return fail(404, { error: 'No se encontró el chat.' });
 				previousMessages = await db
@@ -246,7 +290,10 @@ export const actions: Actions = {
 			}
 
 			const tablesById = new Map(tables.map((table) => [table.id, table]));
-			const tableGroups = createTableGroups(tables, new Set(metadataRows.map((row) => row.tableId)));
+			const tableGroups = createTableGroups(
+				tables,
+				new Set(metadataRows.map((row) => row.tableId))
+			);
 			const selectedTableIds = expandSelectedTableIds(submittedTableIds, tableGroups);
 			const selectedTableIdSet = new Set(selectedTableIds);
 			const rowsForContext =
@@ -343,6 +390,7 @@ export const actions: Actions = {
 				const [created] = await db
 					.insert(askChats)
 					.values({
+						userKey: currentUser,
 						title: createTitle(question),
 						selectedTableIdsJson: JSON.stringify(selectedTableIds),
 						createdAt: timestamp,
@@ -374,7 +422,7 @@ export const actions: Actions = {
 				})
 				.where(eq(askChats.id, activeChatId));
 
-			throw redirect(303, `/ask?chat=${activeChatId}`);
+			throw askRedirect(url, `/ask?chat=${activeChatId}`);
 		} catch (error) {
 			if (isRedirect(error)) throw error;
 			return fail(500, {
@@ -383,13 +431,18 @@ export const actions: Actions = {
 		}
 	},
 
-	deleteChat: async ({ request }) => {
+	deleteChat: async ({ request, url }) => {
+		const currentUser = getUserParam(url);
+		if (!currentUser) return fail(400, { error: 'Usuario no ingresado.' });
+
 		const form = await request.formData();
 		const chatId = Number(form.get('chatId'));
 		if (!chatId) return fail(400, { error: 'No se pudo eliminar ese chat.' });
 
-		await db.delete(askChats).where(eq(askChats.id, chatId));
+		await db
+			.delete(askChats)
+			.where(and(eq(askChats.id, chatId), eq(askChats.userKey, currentUser)));
 
-		throw redirect(303, '/ask');
+		throw askRedirect(url, '/ask');
 	}
 };

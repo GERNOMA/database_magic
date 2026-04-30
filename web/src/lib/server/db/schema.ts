@@ -49,6 +49,7 @@ export const compiledMetadata = sqliteTable('compiled_metadata', {
 
 export const askChats = sqliteTable('ask_chats', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
+	userKey: text('user_key').notNull().default(''),
 	title: text('title').notNull(),
 	selectedTableIdsJson: text('selected_table_ids_json').notNull().default('[]'),
 	createdAt: text('created_at').notNull(),

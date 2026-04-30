@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { adminAction, withAdminParam } from '$lib/admin';
 	import { APP_NAME } from '$lib/app';
 	import type { ActionData, PageData } from './$types';
 
@@ -21,6 +22,10 @@
 			? data.metadataRows.find((metadata) => metadata.tableId === selectedTable.id)
 			: undefined
 	);
+
+	type RouteHref = Parameters<typeof resolve>[0];
+
+	const metadataHref = (href: `/metadata?${string}`) => resolve(withAdminParam(href) as RouteHref);
 </script>
 
 <svelte:head>
@@ -43,7 +48,7 @@
 
 <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
-		<form method="POST" action="?/addTable" class="space-y-3">
+		<form method="POST" action={adminAction('addTable')} class="space-y-3">
 			<label class="text-sm font-medium text-stone-700" for="table-name">Agregar tabla</label>
 			<div class="flex gap-2">
 				<input
@@ -61,7 +66,7 @@
 			</div>
 		</form>
 
-		<form method="POST" action="?/autoImportTables" class="mt-4">
+		<form method="POST" action={adminAction('autoImportTables')} class="mt-4">
 			<button
 				class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-white"
 			>
@@ -79,14 +84,14 @@
 					}`}
 				>
 					<a
-						href={resolve(`/metadata?table=${table.id}`)}
+						href={metadataHref(`/metadata?table=${table.id}`)}
 						class={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${
 							selectedTable?.id === table.id ? 'text-white' : 'text-stone-700'
 						}`}
 					>
 						{table.name}
 					</a>
-					<form method="POST" action="?/deleteTable">
+					<form method="POST" action={adminAction('deleteTable')}>
 						<input type="hidden" name="tableId" value={table.id} />
 						<button
 							class={`rounded-full border px-3 py-1 text-xs font-medium transition ${
@@ -121,7 +126,7 @@
 					<div class="flex w-full flex-col gap-4 lg:w-lg lg:shrink-0">
 						<form
 							method="POST"
-							action="?/saveTableUserName"
+							action={adminAction('saveTableUserName')}
 							class="flex w-full flex-col gap-2"
 						>
 							<input type="hidden" name="tableId" value={selectedTable.id} />
@@ -145,7 +150,7 @@
 						</form>
 						<div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
 							{#if !hasAutomaticFile}
-								<form method="POST" action="?/addAutomaticFile" class="sm:shrink-0">
+								<form method="POST" action={adminAction('addAutomaticFile')} class="sm:shrink-0">
 									<input type="hidden" name="tableId" value={selectedTable.id} />
 									<button
 										class="w-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50 sm:w-auto"
@@ -156,7 +161,7 @@
 							{/if}
 							<form
 								method="POST"
-								action="?/addFile"
+								action={adminAction('addFile')}
 								enctype="multipart/form-data"
 								class="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row"
 							>
@@ -185,7 +190,7 @@
 								<h2 class="truncate font-medium">{file.name}</h2>
 								<p class="mt-1 text-xs text-stone-500">{file.mimeType}</p>
 							</div>
-							<form method="POST" action="?/deleteFile">
+							<form method="POST" action={adminAction('deleteFile')}>
 								<input type="hidden" name="fileId" value={file.id} />
 								<input type="hidden" name="tableId" value={file.tableId} />
 								<button
@@ -218,7 +223,7 @@
 						</p>
 					</div>
 					{#if selectedTable}
-						<form method="POST" action="?/analyzeTable">
+						<form method="POST" action={adminAction('analyzeTable')}>
 							<input type="hidden" name="tableId" value={selectedTable.id} />
 							<button
 								class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
@@ -230,7 +235,7 @@
 				</div>
 
 				{#if selectedMetadata && selectedTable}
-					<form method="POST" action="?/saveMetadata" class="mt-5 space-y-3">
+					<form method="POST" action={adminAction('saveMetadata')} class="mt-5 space-y-3">
 						<input type="hidden" name="tableId" value={selectedTable.id} />
 						<textarea
 							name="json"
@@ -258,7 +263,7 @@
 				<p class="mt-2 text-sm text-stone-500">
 					Crea un JSON maestro a partir de todas las tablas que ya tienen metadatos.
 				</p>
-				<form method="POST" action="?/compileAll" class="mt-5">
+				<form method="POST" action={adminAction('compileAll')} class="mt-5">
 					<button
 						class="w-full rounded-2xl bg-stone-950 px-4 py-3 text-sm font-medium text-white hover:bg-stone-800"
 					>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { adminAction } from '$lib/admin';
 	import { APP_NAME } from '$lib/app';
 	import type { ActionData, PageData } from './$types';
 
@@ -22,7 +23,7 @@
 		</div>
 	{/if}
 
-	<form method="POST" action="?/saveConnection" class="mt-6 space-y-4">
+	<form method="POST" action={adminAction('saveConnection')} class="mt-6 space-y-4">
 		<label class="block text-sm font-medium text-stone-700" for="type">Tipo de base de datos</label>
 		<select
 			id="type"
