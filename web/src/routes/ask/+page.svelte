@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/app';
 	import { withCurrentQueryParams } from '$lib/query-params';
@@ -121,18 +120,18 @@
 		}
 	}
 
-	type RouteHref = Parameters<typeof resolve>[0];
-
 	const askHref = (
 		href: '/ask' | `/ask?${string}`,
 		params: Record<string, string | number | boolean | null | undefined> = {}
 	) => {
-		return resolve(withCurrentQueryParams(page.url, href, params) as RouteHref);
+		return withCurrentQueryParams(page.url, href, params);
 	};
 	const askAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`);
 	};
 </script>
+
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 
 <svelte:head>
 	<title>Preguntar | {APP_NAME}</title>
@@ -152,6 +151,7 @@
 					<p class="text-sm text-stone-500">Chats guardados</p>
 					<h2 class="text-lg font-semibold">Historial de preguntas</h2>
 				</div>
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a
 					href={askHref('/ask', { chat: null })}
 					class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"

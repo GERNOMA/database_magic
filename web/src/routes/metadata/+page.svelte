@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/app';
 	import { withCurrentQueryParams } from '$lib/query-params';
@@ -24,15 +23,15 @@
 			: undefined
 	);
 
-	type RouteHref = Parameters<typeof resolve>[0];
 	const selectedTableParam = $derived(page.url.searchParams.get('table'));
 
-	const metadataHref = (href: `/metadata?${string}`) =>
-		resolve(withCurrentQueryParams(page.url, href) as RouteHref);
+	const metadataHref = (href: `/metadata?${string}`) => withCurrentQueryParams(page.url, href);
 	const metadataAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`, { table: selectedTableParam });
 	};
 </script>
+
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 
 <svelte:head>
 	<title>Metadatos | {APP_NAME}</title>
