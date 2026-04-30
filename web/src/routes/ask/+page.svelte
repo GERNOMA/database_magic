@@ -360,7 +360,11 @@
 										</button>
 									</div>
 								{:else}
-									<p class="py-2 text-sm text-stone-500">Se usarán todas las tablas.</p>
+									<p class="py-2 text-sm text-stone-500">
+										{data.tableGroups.length === 0
+											? 'No tienes tablas habilitadas.'
+											: 'Se usarán todas las tablas habilitadas.'}
+									</p>
 								{/each}
 							</div>
 
@@ -427,7 +431,7 @@
 						</div>
 						<p class="mt-1">
 							{data.tableGroups.length === 0
-								? 'Genera metadatos para habilitar tablas.'
+								? 'Pide a un administrador que habilite tablas para tu usuario.'
 								: 'Agrega una o más tablas para limitar el contexto.'}
 						</p>
 					</div>

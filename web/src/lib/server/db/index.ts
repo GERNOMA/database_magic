@@ -52,11 +52,13 @@ client.exec(`
 		updated_at TEXT NOT NULL
 	);
 
-	CREATE TABLE IF NOT EXISTS compiled_metadata (
+	CREATE TABLE IF NOT EXISTS app_users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		file_name TEXT NOT NULL,
-		json TEXT NOT NULL,
-		created_at TEXT NOT NULL
+		user_key TEXT NOT NULL UNIQUE,
+		allowed_table_ids_json TEXT NOT NULL DEFAULT '[]',
+		table_restrictions_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS ask_chats (
@@ -86,5 +88,15 @@ ensureColumn(
 	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
 );
 ensureColumn('ask_chats', 'user_key', "user_key TEXT NOT NULL DEFAULT ''");
+ensureColumn(
+	'app_users',
+	'allowed_table_ids_json',
+	"allowed_table_ids_json TEXT NOT NULL DEFAULT '[]'"
+);
+ensureColumn(
+	'app_users',
+	'table_restrictions_json',
+	"table_restrictions_json TEXT NOT NULL DEFAULT '{}'"
+);
 
 export const db = drizzle(client, { schema });

@@ -40,11 +40,13 @@ export const tableMetadata = sqliteTable('table_metadata', {
 	updatedAt: text('updated_at').notNull()
 });
 
-export const compiledMetadata = sqliteTable('compiled_metadata', {
+export const appUsers = sqliteTable('app_users', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	fileName: text('file_name').notNull(),
-	json: text('json').notNull(),
-	createdAt: text('created_at').notNull()
+	userKey: text('user_key').notNull().unique(),
+	allowedTableIdsJson: text('allowed_table_ids_json').notNull().default('[]'),
+	tableRestrictionsJson: text('table_restrictions_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull()
 });
 
 export const askChats = sqliteTable('ask_chats', {

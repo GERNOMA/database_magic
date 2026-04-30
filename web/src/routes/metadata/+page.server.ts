@@ -9,7 +9,6 @@ import {
 	listDatabaseTableNames
 } from '$lib/server/db/query-runner';
 import {
-	compiledMetadata,
 	databaseConnections,
 	metadataTables,
 	tableFiles,
@@ -40,11 +39,6 @@ export const load: PageServerLoad = async ({ url }) => {
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
 	const files = await db.select().from(tableFiles).orderBy(desc(tableFiles.createdAt));
 	const metadataRows = await db.select().from(tableMetadata).orderBy(desc(tableMetadata.updatedAt));
-	const [compiled] = await db
-		.select()
-		.from(compiledMetadata)
-		.orderBy(desc(compiledMetadata.createdAt))
-		.limit(1);
 
 	const selectedTableId = Number(url.searchParams.get('table') ?? tables[0]?.id ?? 0);
 
@@ -53,7 +47,6 @@ export const load: PageServerLoad = async ({ url }) => {
 		files,
 		metadataRows,
 		selectedTableId,
-		compiled,
 		saved: url.searchParams.get('saved') === '1'
 	};
 };
@@ -319,21 +312,5 @@ export const actions: Actions = {
 		}
 
 		throw adminRedirect(url, `/metadata?table=${tableId}&saved=1`);
-	},
-
-	compileAll: async ({ url }) => {
-		const rows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
-		const compiled = {
-			createdAt: now(),
-			tables: rows.map((row) => extractJson<MetadataJson>(row.json))
-		};
-
-		await db.insert(compiledMetadata).values({
-			fileName: 'master_metadata.json',
-			json: JSON.stringify(compiled, null, 2),
-			createdAt: compiled.createdAt
-		});
-
-		throw adminRedirect(url, '/metadata?compiled=1');
 	}
 };
