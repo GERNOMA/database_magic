@@ -8,6 +8,14 @@ if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
 const client = new Database(env.DATABASE_URL);
 
 client.pragma('foreign_keys = ON');
+
+function ensureColumn(table: string, column: string, definition: string) {
+	const columns = client.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+	if (!columns.some((currentColumn) => currentColumn.name === column)) {
+		client.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+	}
+}
+
 client.exec(`
 	CREATE TABLE IF NOT EXISTS database_connections (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,6 +29,7 @@ client.exec(`
 	CREATE TABLE IF NOT EXISTS metadata_tables (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
+		user_friendly_name TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	);
@@ -53,6 +62,7 @@ client.exec(`
 	CREATE TABLE IF NOT EXISTS ask_chats (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT NOT NULL,
+		selected_table_ids_json TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	);
@@ -67,5 +77,12 @@ client.exec(`
 		created_at TEXT NOT NULL
 	);
 `);
+
+ensureColumn('metadata_tables', 'user_friendly_name', 'user_friendly_name TEXT');
+ensureColumn(
+	'ask_chats',
+	'selected_table_ids_json',
+	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
+);
 
 export const db = drizzle(client, { schema });

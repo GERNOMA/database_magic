@@ -8,6 +8,19 @@
 	let question = $state('');
 	let pendingQuestion = $state<string | null>(null);
 	let isWaitingForAnswer = $state(false);
+	let selectedTableIds = $state<number[]>([]);
+	let tableSearchQuery = $state('');
+	let selectedTables = $derived(
+		data.availableTables.filter((table) => selectedTableIds.includes(table.id))
+	);
+	let tablesToAdd = $derived(
+		data.availableTables.filter((table) => !selectedTableIds.includes(table.id))
+	);
+	let filteredTablesToAdd = $derived(
+		tablesToAdd.filter((table) =>
+			table.label.toLowerCase().includes(tableSearchQuery.trim().toLowerCase())
+		)
+	);
 	let messages = $derived(
 		pendingQuestion
 			? [
@@ -24,6 +37,10 @@
 				]
 			: data.messages
 	);
+
+	$effect(() => {
+		selectedTableIds = data.selectedTableIds;
+	});
 
 	const handleAskSubmit: SubmitFunction = ({ formData, cancel }) => {
 		const submittedQuestion = String(formData.get('question') ?? '').trim();
@@ -46,6 +63,16 @@
 			isWaitingForAnswer = false;
 		};
 	};
+
+	function addTableToContext(tableId: number) {
+		if (isWaitingForAnswer || selectedTableIds.includes(tableId)) return;
+		selectedTableIds = [...selectedTableIds, tableId];
+	}
+
+	function removeTableFromContext(tableId: number) {
+		if (isWaitingForAnswer) return;
+		selectedTableIds = selectedTableIds.filter((selectedTableId) => selectedTableId !== tableId);
+	}
 
 	function formatDate(value: string) {
 		return new Intl.DateTimeFormat('es', {
@@ -238,12 +265,92 @@
 					placeholder="Haz una pregunta de seguimiento, por ejemplo: ¿por qué cambió eso?"
 					class="max-h-48 w-full resize-y border-0 bg-transparent p-3 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-stone-400"
 				></textarea>
-				<div class="flex items-center justify-between gap-3 px-2 pb-2">
-					<p class="text-xs text-stone-500">
-						{data.selectedChat
-							? 'Continuando este chat'
-							: 'Se guardará un chat nuevo automáticamente'}
-					</p>
+				<div class="flex flex-col gap-3 px-2 pb-2 sm:flex-row sm:items-end sm:justify-between">
+					<div class="min-w-0 flex-1 text-xs text-stone-500">
+						<p class="mb-2 font-medium text-stone-600">Tablas para este chat</p>
+						{#each selectedTableIds as tableId (tableId)}
+							<input type="hidden" name="tableIds" value={tableId} />
+						{/each}
+						<div class="rounded-2xl border border-stone-200 bg-white p-3">
+							<div class="flex min-h-10 flex-wrap gap-2">
+								{#each selectedTables as table (table.id)}
+									<div
+										class="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-stone-950 py-1 pr-1 pl-3 text-xs font-medium text-white"
+									>
+										<span>{table.label}</span>
+										<button
+											type="button"
+											disabled={isWaitingForAnswer}
+											class="grid h-6 w-6 place-items-center rounded-full text-stone-200 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+											aria-label={`Quitar ${table.label}`}
+											onclick={() => removeTableFromContext(table.id)}
+										>
+											x
+										</button>
+									</div>
+								{:else}
+									<p class="py-2 text-sm text-stone-500">Se usará el JSON maestro completo.</p>
+								{/each}
+							</div>
+
+							{#if tablesToAdd.length > 0}
+								<div class="mt-3 space-y-3 border-t border-stone-100 pt-3">
+									<label class="relative block" for="table-context-search">
+										<span class="sr-only">Buscar tablas para este chat</span>
+										<span
+											class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400"
+											aria-hidden="true"
+										>
+											<svg
+												class="h-4 w-4"
+												viewBox="0 0 20 20"
+												fill="none"
+												xmlns="http://www.w3.org/2000/svg"
+											>
+												<path
+													d="M9 15.5A6.5 6.5 0 1 0 9 2.5a6.5 6.5 0 0 0 0 13ZM14 14l3.5 3.5"
+													stroke="currentColor"
+													stroke-width="1.8"
+													stroke-linecap="round"
+												/>
+											</svg>
+										</span>
+										<input
+											id="table-context-search"
+											type="search"
+											bind:value={tableSearchQuery}
+											disabled={isWaitingForAnswer}
+											placeholder="Buscar tabla..."
+											class="w-full rounded-2xl border border-stone-200 bg-stone-50 py-2 pr-3 pl-9 text-sm text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+										/>
+									</label>
+									<div class="max-h-36 overflow-y-auto pr-1">
+										<div class="flex flex-wrap gap-2">
+											{#each filteredTablesToAdd as table (table.id)}
+												<button
+													type="button"
+													disabled={isWaitingForAnswer}
+													class="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+													onclick={() => addTableToContext(table.id)}
+												>
+													+ {table.label}
+												</button>
+											{:else}
+												<p class="rounded-2xl border border-dashed border-stone-200 p-3 text-sm text-stone-500">
+													No encontramos tablas con ese nombre.
+												</p>
+											{/each}
+										</div>
+									</div>
+								</div>
+							{/if}
+						</div>
+						<p class="mt-1">
+							{data.availableTables.length === 0
+								? 'Genera metadatos para habilitar tablas.'
+								: 'Agrega una o más tablas para limitar el contexto.'}
+						</p>
+					</div>
 					<button
 						disabled={isWaitingForAnswer}
 						class="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"

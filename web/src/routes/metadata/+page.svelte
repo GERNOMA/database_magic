@@ -107,8 +107,8 @@
 	</aside>
 
 	<section class="space-y-6">
-		<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-			<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+		<div class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-7">
+			<div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
 				<div>
 					<p class="text-sm text-stone-500">Tabla seleccionada</p>
 					<h1 class="mt-1 text-2xl font-semibold">
@@ -117,42 +117,68 @@
 				</div>
 
 				{#if selectedTable}
-					<div class="flex flex-col gap-2 sm:flex-row">
-						{#if !hasAutomaticFile}
-							<form method="POST" action="?/addAutomaticFile">
-								<input type="hidden" name="tableId" value={selectedTable.id} />
-								<button
-									class="h-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
-								>
-									Archivo automático
-								</button>
-							</form>
-						{/if}
+					<div class="flex w-full flex-col gap-4 lg:w-lg lg:shrink-0">
 						<form
 							method="POST"
-							action="?/addFile"
-							enctype="multipart/form-data"
-							class="flex flex-col gap-2 sm:flex-row"
+							action="?/saveTableUserName"
+							class="flex w-full flex-col gap-2"
 						>
 							<input type="hidden" name="tableId" value={selectedTable.id} />
-							<input
-								name="file"
-								type="file"
-								class="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-stone-950 file:px-3 file:py-1.5 file:text-sm file:text-white"
-							/>
-							<button
-								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
-							>
-								+ Agregar archivo
-							</button>
+							<label class="text-xs font-medium text-stone-500" for="user-friendly-name">
+								Nombre para usuario
+							</label>
+							<div class="flex flex-col gap-3 sm:flex-row">
+								<input
+									id="user-friendly-name"
+									name="userFriendlyName"
+									value={selectedTable.userFriendlyName ?? ''}
+									placeholder={selectedTable.name}
+									class="min-w-0 flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-stone-500"
+								/>
+								<button
+									class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+								>
+									Guardar
+								</button>
+							</div>
 						</form>
+						<div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
+							{#if !hasAutomaticFile}
+								<form method="POST" action="?/addAutomaticFile" class="sm:shrink-0">
+									<input type="hidden" name="tableId" value={selectedTable.id} />
+									<button
+										class="w-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50 sm:w-auto"
+									>
+										Archivo automático
+									</button>
+								</form>
+							{/if}
+							<form
+								method="POST"
+								action="?/addFile"
+								enctype="multipart/form-data"
+								class="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row"
+							>
+								<input type="hidden" name="tableId" value={selectedTable.id} />
+								<input
+									name="file"
+									type="file"
+									class="min-w-0 rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-stone-950 file:px-3 file:py-1.5 file:text-sm file:text-white sm:flex-1"
+								/>
+								<button
+									class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+								>
+									+ Agregar archivo
+								</button>
+							</form>
+						</div>
 					</div>
 				{/if}
 			</div>
 
-			<div class="mt-5 grid gap-3 md:grid-cols-2">
+			<div class="mt-7 grid gap-4 md:grid-cols-2">
 				{#each selectedFiles as file (file.id)}
-					<article class="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+					<article class="rounded-2xl border border-stone-200 bg-stone-50 p-5">
 						<div class="flex items-start justify-between gap-3">
 							<div class="min-w-0">
 								<h2 class="truncate font-medium">{file.name}</h2>
