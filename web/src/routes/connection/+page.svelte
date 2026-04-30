@@ -1,11 +1,17 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { APP_NAME } from '$lib/app';
+	import { withCurrentQueryParams } from '$lib/query-params';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const connectionAction = (actionName: string) =>
+		withCurrentQueryParams(page.url, `?/${actionName}`);
 </script>
 
 <svelte:head>
-	<title>Conexión | Database Magic</title>
+	<title>Conexión | {APP_NAME}</title>
 </svelte:head>
 
 <section class="mx-auto max-w-2xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -21,7 +27,7 @@
 		</div>
 	{/if}
 
-	<form method="POST" action="?/saveConnection" class="mt-6 space-y-4">
+	<form method="POST" action={connectionAction('saveConnection')} class="mt-6 space-y-4">
 		<label class="block text-sm font-medium text-stone-700" for="type">Tipo de base de datos</label>
 		<select
 			id="type"

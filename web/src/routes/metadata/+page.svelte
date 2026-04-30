@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { APP_NAME } from '$lib/app';
+	import { withCurrentQueryParams } from '$lib/query-params';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -20,10 +23,19 @@
 			? data.metadataRows.find((metadata) => metadata.tableId === selectedTable.id)
 			: undefined
 	);
+
+	type RouteHref = Parameters<typeof resolve>[0];
+	const selectedTableParam = $derived(page.url.searchParams.get('table'));
+
+	const metadataHref = (href: `/metadata?${string}`) =>
+		resolve(withCurrentQueryParams(page.url, href) as RouteHref);
+	const metadataAction = (actionName: string) => {
+		return withCurrentQueryParams(page.url, `?/${actionName}`, { table: selectedTableParam });
+	};
 </script>
 
 <svelte:head>
-	<title>Metadatos | Database Magic</title>
+	<title>Metadatos | {APP_NAME}</title>
 </svelte:head>
 
 {#if form?.error}
@@ -42,7 +54,7 @@
 
 <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
 	<aside class="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
-		<form method="POST" action="?/addTable" class="space-y-3">
+		<form method="POST" action={metadataAction('addTable')} class="space-y-3">
 			<label class="text-sm font-medium text-stone-700" for="table-name">Agregar tabla</label>
 			<div class="flex gap-2">
 				<input
@@ -60,7 +72,7 @@
 			</div>
 		</form>
 
-		<form method="POST" action="?/autoImportTables" class="mt-4">
+		<form method="POST" action={metadataAction('autoImportTables')} class="mt-4">
 			<button
 				class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-white"
 			>
@@ -78,14 +90,14 @@
 					}`}
 				>
 					<a
-						href={resolve(`/metadata?table=${table.id}`)}
+						href={metadataHref(`/metadata?table=${table.id}`)}
 						class={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${
 							selectedTable?.id === table.id ? 'text-white' : 'text-stone-700'
 						}`}
 					>
 						{table.name}
 					</a>
-					<form method="POST" action="?/deleteTable">
+					<form method="POST" action={metadataAction('deleteTable')}>
 						<input type="hidden" name="tableId" value={table.id} />
 						<button
 							class={`rounded-full border px-3 py-1 text-xs font-medium transition ${
@@ -120,7 +132,7 @@
 					<div class="flex w-full flex-col gap-4 lg:w-lg lg:shrink-0">
 						<form
 							method="POST"
-							action="?/saveTableUserName"
+							action={metadataAction('saveTableUserName')}
 							class="flex w-full flex-col gap-2"
 						>
 							<input type="hidden" name="tableId" value={selectedTable.id} />
@@ -144,7 +156,7 @@
 						</form>
 						<div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap">
 							{#if !hasAutomaticFile}
-								<form method="POST" action="?/addAutomaticFile" class="sm:shrink-0">
+								<form method="POST" action={metadataAction('addAutomaticFile')} class="sm:shrink-0">
 									<input type="hidden" name="tableId" value={selectedTable.id} />
 									<button
 										class="w-full rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50 sm:w-auto"
@@ -155,7 +167,7 @@
 							{/if}
 							<form
 								method="POST"
-								action="?/addFile"
+								action={metadataAction('addFile')}
 								enctype="multipart/form-data"
 								class="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row"
 							>
@@ -184,7 +196,7 @@
 								<h2 class="truncate font-medium">{file.name}</h2>
 								<p class="mt-1 text-xs text-stone-500">{file.mimeType}</p>
 							</div>
-							<form method="POST" action="?/deleteFile">
+							<form method="POST" action={metadataAction('deleteFile')}>
 								<input type="hidden" name="fileId" value={file.id} />
 								<input type="hidden" name="tableId" value={file.tableId} />
 								<button
@@ -206,70 +218,49 @@
 			</div>
 		</div>
 
-		<div class="grid gap-6 lg:grid-cols-[1fr_260px]">
-			<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-					<div>
-						<h2 class="text-lg font-semibold">Metadatos generados</h2>
-						<p class="text-sm text-stone-500">
-							{selectedMetadata?.fileName ??
-								'Ejecuta el análisis para crear un archivo JSON de metadatos.'}
-						</p>
-					</div>
-					{#if selectedTable}
-						<form method="POST" action="?/analyzeTable">
-							<input type="hidden" name="tableId" value={selectedTable.id} />
-							<button
-								class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
-							>
-								Analizar archivos
-							</button>
-						</form>
-					{/if}
-				</div>
-
-				{#if selectedMetadata && selectedTable}
-					<form method="POST" action="?/saveMetadata" class="mt-5 space-y-3">
-						<input type="hidden" name="tableId" value={selectedTable.id} />
-						<textarea
-							name="json"
-							rows="18"
-							spellcheck="false"
-							class="max-h-[420px] w-full resize-y overflow-auto rounded-2xl border-0 bg-stone-950 p-4 font-mono text-xs leading-6 text-stone-100 ring-1 ring-transparent outline-none focus:ring-stone-500"
-							value={selectedMetadata.json}
-						></textarea>
-						<div class="flex justify-end">
-							<button
-								class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
-							>
-								Guardar metadatos
-							</button>
-						</div>
-					</form>
-				{:else}
-					<pre
-						class="mt-5 max-h-[420px] overflow-auto rounded-2xl bg-stone-950 p-4 text-xs leading-6 text-stone-100">{'{\n  "tableName": "",\n  "generalDescription": "",\n  "fields": []\n}'}</pre>
-				{/if}
-			</div>
-
-			<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-				<h2 class="text-lg font-semibold">Compilar</h2>
-				<p class="mt-2 text-sm text-stone-500">
-					Crea un JSON maestro a partir de todas las tablas que ya tienen metadatos.
-				</p>
-				<form method="POST" action="?/compileAll" class="mt-5">
-					<button
-						class="w-full rounded-2xl bg-stone-950 px-4 py-3 text-sm font-medium text-white hover:bg-stone-800"
-					>
-						Compilar todo
-					</button>
-				</form>
-				{#if data.compiled}
-					<p class="mt-4 text-xs text-stone-500">
-						Último: <span class="font-medium text-stone-700">{data.compiled.fileName}</span>
+		<div class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<h2 class="text-lg font-semibold">Metadatos generados</h2>
+					<p class="text-sm text-stone-500">
+						{selectedMetadata?.fileName ??
+							'Ejecuta el análisis para crear un archivo JSON de metadatos.'}
 					</p>
+				</div>
+				{#if selectedTable}
+					<form method="POST" action={metadataAction('analyzeTable')}>
+						<input type="hidden" name="tableId" value={selectedTable.id} />
+						<button
+							class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+						>
+							Analizar archivos
+						</button>
+					</form>
 				{/if}
 			</div>
+
+			{#if selectedMetadata && selectedTable}
+				<form method="POST" action={metadataAction('saveMetadata')} class="mt-5 space-y-3">
+					<input type="hidden" name="tableId" value={selectedTable.id} />
+					<textarea
+						name="json"
+						rows="18"
+						spellcheck="false"
+						class="max-h-[420px] w-full resize-y overflow-auto rounded-2xl border-0 bg-stone-950 p-4 font-mono text-xs leading-6 text-stone-100 ring-1 ring-transparent outline-none focus:ring-stone-500"
+						value={selectedMetadata.json}
+					></textarea>
+					<div class="flex justify-end">
+						<button
+							class="rounded-2xl border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-50"
+						>
+							Guardar metadatos
+						</button>
+					</div>
+				</form>
+			{:else}
+				<pre
+					class="mt-5 max-h-[420px] overflow-auto rounded-2xl bg-stone-950 p-4 text-xs leading-6 text-stone-100">{'{\n  "tableName": "",\n  "generalDescription": "",\n  "fields": []\n}'}</pre>
+			{/if}
 		</div>
 	</section>
 </div>

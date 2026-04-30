@@ -1,5 +1,6 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { getUserParam, withCurrentQueryParams } from '$lib/query-params';
 import {
 	createOpenRouterChatCompletion,
 	type OpenRouterMessage,
@@ -15,10 +16,19 @@ import {
 import {
 	askChats,
 	askMessages,
+	appUsers,
 	databaseConnections,
 	metadataTables,
 	tableMetadata
 } from '$lib/server/db/schema';
+import {
+	createTableGroups,
+	expandSelectedTableIds,
+	getSelectedTableIds,
+	parseTableIdsJson,
+	parseTableRestrictionsJson,
+	tableLabel
+} from '$lib/server/table-groups';
 import type { Actions, PageServerLoad } from './$types';
 
 const now = () => new Date().toISOString();
@@ -31,6 +41,8 @@ type MetadataJson = {
 	generalDescription: string;
 	fields: Array<{ name: string; description: string }>;
 };
+
+type MetadataTable = typeof metadataTables.$inferSelect;
 
 function createTitle(question: string) {
 	const compact = question.replace(/\s+/g, ' ').trim();
@@ -78,30 +90,28 @@ function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
 	};
 }
 
-function parseSelectedTableIds(value: string | null) {
-	if (!value) return [];
-	try {
-		const parsed = JSON.parse(value);
-		return Array.isArray(parsed)
-			? parsed.filter((id): id is number => Number.isInteger(id) && id > 0)
-			: [];
-	} catch {
-		return [];
-	}
-}
+const askRedirect = (url: URL, href: string) => redirect(303, withCurrentQueryParams(url, href));
 
-function getSelectedTableIds(form: FormData) {
-	return form
-		.getAll('tableIds')
-		.map((value) => Number(value))
-		.filter((id, index, ids) => Number.isInteger(id) && id > 0 && ids.indexOf(id) === index);
-}
-
-function createMetadataContext(rows: Array<typeof tableMetadata.$inferSelect>) {
+function createMetadataContext(
+	rows: Array<typeof tableMetadata.$inferSelect>,
+	tablesById: Map<number, MetadataTable>,
+	tableRestrictions: Map<number, string>
+) {
 	return JSON.stringify(
 		{
 			createdAt: now(),
-			tables: rows.map((row) => JSON.parse(row.json) as MetadataJson)
+			tables: rows.map((row) => {
+				const metadata = JSON.parse(row.json) as MetadataJson;
+				const table = tablesById.get(row.tableId);
+				const restriction = tableRestrictions.get(row.tableId);
+
+				return {
+					...metadata,
+					tableName: table?.name ?? metadata.tableName,
+					umbrellaName: table ? tableLabel(table) : metadata.tableName,
+					...(restriction ? { restriction } : {})
+				};
+			})
 		},
 		null,
 		2
@@ -109,19 +119,50 @@ function createMetadataContext(rows: Array<typeof tableMetadata.$inferSelect>) {
 }
 
 export const load: PageServerLoad = async ({ url }) => {
-	const chats = await db.select().from(askChats).orderBy(desc(askChats.updatedAt));
+	const currentUser = getUserParam(url);
+	if (!currentUser) {
+		return {
+			currentUser: null,
+			chats: [],
+			selectedChat: null,
+			messages: [],
+			tableGroups: [],
+			selectedTableIds: []
+		};
+	}
+
+	const [registeredUser] = await db
+		.select()
+		.from(appUsers)
+		.where(eq(appUsers.userKey, currentUser))
+		.limit(1);
+	if (!registeredUser) {
+		return {
+			currentUser: null,
+			chats: [],
+			selectedChat: null,
+			messages: [],
+			tableGroups: [],
+			selectedTableIds: []
+		};
+	}
+
+	const chats = await db
+		.select()
+		.from(askChats)
+		.where(eq(askChats.userKey, currentUser))
+		.orderBy(desc(askChats.updatedAt));
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
 	const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 	const tablesWithMetadata = new Set(metadataRows.map((row) => row.tableId));
-	const availableTables = tables
-		.filter((table) => tablesWithMetadata.has(table.id))
-		.map((table) => ({
-			id: table.id,
-			name: table.name,
-			label: table.userFriendlyName?.trim() || table.name
-		}));
+	const allowedTableIds = new Set(parseTableIdsJson(registeredUser.allowedTableIdsJson));
+	const allowedTables = tables.filter((table) => allowedTableIds.has(table.id));
+	const tableGroups = createTableGroups(allowedTables, tablesWithMetadata);
 	const selectedChatId = Number(url.searchParams.get('chat') ?? 0);
 	const selectedChat = chats.find((chat) => chat.id === selectedChatId);
+	const selectedTableIds = parseTableIdsJson(selectedChat?.selectedTableIdsJson ?? null).filter(
+		(tableId) => allowedTableIds.has(tableId)
+	);
 	const messages = selectedChat
 		? await db
 				.select()
@@ -131,20 +172,30 @@ export const load: PageServerLoad = async ({ url }) => {
 		: [];
 
 	return {
+		currentUser,
 		chats,
 		selectedChat,
 		messages,
-		availableTables,
-		selectedTableIds: parseSelectedTableIds(selectedChat?.selectedTableIdsJson ?? null)
+		tableGroups,
+		selectedTableIds
 	};
 };
 
 export const actions: Actions = {
-	ask: async ({ request }) => {
+	ask: async ({ request, url }) => {
+		const currentUser = getUserParam(url);
+		if (!currentUser) return fail(400, { error: 'Usuario no ingresado.' });
+		const [registeredUser] = await db
+			.select()
+			.from(appUsers)
+			.where(eq(appUsers.userKey, currentUser))
+			.limit(1);
+		if (!registeredUser) return fail(400, { error: 'Usuario no ingresado.' });
+
 		const form = await request.formData();
 		const question = String(form.get('question') ?? '').trim();
 		const chatId = Number(form.get('chatId') ?? 0);
-		const selectedTableIds = getSelectedTableIds(form);
+		const submittedTableIds = getSelectedTableIds(form);
 		if (!question) return fail(400, { error: 'Primero haz una pregunta.' });
 
 		const [connection] = await db
@@ -159,7 +210,10 @@ export const actions: Actions = {
 				error: 'Elige un tipo de base de datos compatible antes de hacer preguntas.'
 			});
 
-		const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
+		const [metadataRows, tables] = await Promise.all([
+			db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName)),
+			db.select().from(metadataTables).orderBy(asc(metadataTables.name))
+		]);
 		if (metadataRows.length === 0)
 			return fail(400, { error: 'Genera metadatos antes de hacer preguntas.' });
 
@@ -172,7 +226,7 @@ export const actions: Actions = {
 				const [chat] = await db
 					.select()
 					.from(askChats)
-					.where(eq(askChats.id, activeChatId))
+					.where(and(eq(askChats.id, activeChatId), eq(askChats.userKey, currentUser)))
 					.limit(1);
 				if (!chat) return fail(404, { error: 'No se encontró el chat.' });
 				previousMessages = await db
@@ -182,15 +236,29 @@ export const actions: Actions = {
 					.orderBy(asc(askMessages.createdAt), asc(askMessages.id));
 			}
 
+			const tablesById = new Map(tables.map((table) => [table.id, table]));
+			const allowedTableIds = new Set(parseTableIdsJson(registeredUser.allowedTableIdsJson));
+			const allowedMetadataRows = metadataRows.filter((row) => allowedTableIds.has(row.tableId));
+			if (allowedMetadataRows.length === 0)
+				return fail(400, { error: 'No tienes tablas habilitadas para consultar.' });
+			const tableGroups = createTableGroups(
+				tables.filter((table) => allowedTableIds.has(table.id)),
+				new Set(allowedMetadataRows.map((row) => row.tableId))
+			);
+			const selectedTableIds = expandSelectedTableIds(submittedTableIds, tableGroups);
 			const selectedTableIdSet = new Set(selectedTableIds);
 			const rowsForContext =
 				selectedTableIds.length > 0
-					? metadataRows.filter((row) => selectedTableIdSet.has(row.tableId))
-					: metadataRows;
+					? allowedMetadataRows.filter((row) => selectedTableIdSet.has(row.tableId))
+					: allowedMetadataRows;
 			if (rowsForContext.length === 0)
 				return fail(400, { error: 'Selecciona tablas que ya tengan metadatos generados.' });
 
-			const metadataContext = createMetadataContext(rowsForContext);
+			const metadataContext = createMetadataContext(
+				rowsForContext,
+				tablesById,
+				parseTableRestrictionsJson(registeredUser.tableRestrictionsJson)
+			);
 			const dialect = getDialectName(connection.type);
 			const chatContext = previousMessages
 				.slice(-10)
@@ -277,6 +345,7 @@ export const actions: Actions = {
 				const [created] = await db
 					.insert(askChats)
 					.values({
+						userKey: currentUser,
 						title: createTitle(question),
 						selectedTableIdsJson: JSON.stringify(selectedTableIds),
 						createdAt: timestamp,
@@ -308,7 +377,7 @@ export const actions: Actions = {
 				})
 				.where(eq(askChats.id, activeChatId));
 
-			throw redirect(303, `/ask?chat=${activeChatId}`);
+			throw askRedirect(url, `/ask?chat=${activeChatId}`);
 		} catch (error) {
 			if (isRedirect(error)) throw error;
 			return fail(500, {
@@ -317,13 +386,24 @@ export const actions: Actions = {
 		}
 	},
 
-	deleteChat: async ({ request }) => {
+	deleteChat: async ({ request, url }) => {
+		const currentUser = getUserParam(url);
+		if (!currentUser) return fail(400, { error: 'Usuario no ingresado.' });
+		const [registeredUser] = await db
+			.select()
+			.from(appUsers)
+			.where(eq(appUsers.userKey, currentUser))
+			.limit(1);
+		if (!registeredUser) return fail(400, { error: 'Usuario no ingresado.' });
+
 		const form = await request.formData();
 		const chatId = Number(form.get('chatId'));
 		if (!chatId) return fail(400, { error: 'No se pudo eliminar ese chat.' });
 
-		await db.delete(askChats).where(eq(askChats.id, chatId));
+		await db
+			.delete(askChats)
+			.where(and(eq(askChats.id, chatId), eq(askChats.userKey, currentUser)));
 
-		throw redirect(303, '/ask');
+		throw redirect(303, withCurrentQueryParams(url, '/ask', { chat: null }));
 	}
 };
