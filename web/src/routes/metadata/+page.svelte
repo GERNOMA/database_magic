@@ -4,11 +4,67 @@
 	import { withCurrentQueryParams } from '$lib/query-params';
 	import type { ActionData, PageData } from './$types';
 
+	type MetadataTable = PageData['tables'][number];
+	type TableListSection =
+		| { kind: 'shared'; name: string; tables: MetadataTable[] }
+		| { kind: 'single'; table: MetadataTable };
+
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let tableSearchQuery = $state('');
+
+	const tableMatchesSearch = (table: MetadataTable, query: string) =>
+		`${table.name} ${table.userFriendlyName ?? ''}`.toLowerCase().includes(query);
+	const getUserNameGroup = (table: MetadataTable) => table.userFriendlyName?.trim() ?? '';
+	const getTableSortName = (table: MetadataTable) => getUserNameGroup(table) || table.name;
 
 	const selectedTable = $derived(
 		data.tables.find((table) => table.id === data.selectedTableId) ?? data.tables[0]
 	);
+	const metadataTableIds = $derived(new Set(data.metadataRows.map((metadata) => metadata.tableId)));
+	const filteredTables = $derived(
+		data.tables.filter((table) => tableMatchesSearch(table, tableSearchQuery.trim().toLowerCase()))
+	);
+	const tableListSections = $derived.by<TableListSection[]>(() => {
+		const namedGroups = new Map<string, MetadataTable[]>();
+		const unnamedTables: MetadataTable[] = [];
+
+		for (const table of filteredTables) {
+			const groupName = getUserNameGroup(table);
+			if (!groupName) {
+				unnamedTables.push(table);
+				continue;
+			}
+
+			namedGroups.set(groupName, [...(namedGroups.get(groupName) ?? []), table]);
+		}
+
+		const sharedSections = Array.from(namedGroups.entries())
+			.filter(([, tables]) => tables.length > 1)
+			.sort(([nameA], [nameB]) => nameA.localeCompare(nameB))
+			.map(([name, tables]) => ({
+				kind: 'shared' as const,
+				name,
+				tables: tables.toSorted((tableA, tableB) => tableA.name.localeCompare(tableB.name))
+			}));
+		const singleTables = [
+			...Array.from(namedGroups.values())
+				.filter((tables) => tables.length === 1)
+				.flat(),
+			...unnamedTables
+		].toSorted((tableA, tableB) =>
+			getTableSortName(tableA).localeCompare(getTableSortName(tableB))
+		);
+
+		return [
+			...sharedSections,
+			...singleTables
+				.filter((table) => metadataTableIds.has(table.id))
+				.map((table) => ({ kind: 'single' as const, table })),
+			...singleTables
+				.filter((table) => !metadataTableIds.has(table.id))
+				.map((table) => ({ kind: 'single' as const, table }))
+		];
+	});
 	const selectedFiles = $derived(
 		selectedTable ? data.files.filter((file) => file.tableId === selectedTable.id) : []
 	);
@@ -29,6 +85,18 @@
 	const metadataAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`, { table: selectedTableParam });
 	};
+	const tableCardClass = (table: MetadataTable) => {
+		if (selectedTable?.id === table.id) return 'border-stone-950 bg-stone-950';
+		if (metadataTableIds.has(table.id))
+			return 'border-sky-200 bg-sky-50/80 hover:border-sky-300 hover:bg-sky-100/70';
+		return 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50';
+	};
+	const tableLinkClass = (table: MetadataTable) =>
+		selectedTable?.id === table.id ? 'text-white' : 'text-stone-700';
+	const deleteButtonClass = (table: MetadataTable) =>
+		selectedTable?.id === table.id
+			? 'border-white/25 text-white hover:bg-white/10'
+			: 'border-red-200 text-red-600 hover:bg-red-50';
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -79,41 +147,93 @@
 			</button>
 		</form>
 
-		<div class="mt-5 space-y-2">
-			{#each data.tables as table (table.id)}
-				<div
-					class={`flex items-center gap-2 rounded-2xl border p-1 transition ${
-						selectedTable?.id === table.id
-							? 'border-stone-950 bg-stone-950'
-							: 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-white'
-					}`}
-				>
-					<a
-						href={metadataHref(`/metadata?table=${table.id}`)}
-						class={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${
-							selectedTable?.id === table.id ? 'text-white' : 'text-stone-700'
-						}`}
+		<div class="mt-5 space-y-3">
+			{#if data.tables.length > 0}
+				<label class="relative block" for="metadata-table-search">
+					<span class="sr-only">Buscar tablas</span>
+					<span
+						class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400"
+						aria-hidden="true"
 					>
-						{table.name}
-					</a>
-					<form method="POST" action={metadataAction('deleteTable')}>
-						<input type="hidden" name="tableId" value={table.id} />
-						<button
-							class={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-								selectedTable?.id === table.id
-									? 'border-white/25 text-white hover:bg-white/10'
-									: 'border-red-200 text-red-600 hover:bg-red-50'
-							}`}
+						<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+							<path
+								d="M9 15.5A6.5 6.5 0 1 0 9 2.5a6.5 6.5 0 0 0 0 13ZM14 14l3.5 3.5"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+							/>
+						</svg>
+					</span>
+					<input
+						id="metadata-table-search"
+						type="search"
+						bind:value={tableSearchQuery}
+						placeholder="Buscar tabla..."
+						class="w-full rounded-2xl border border-stone-200 bg-stone-50 py-2 pr-3 pl-9 text-sm text-stone-700 transition outline-none placeholder:text-stone-400 focus:border-stone-400 focus:bg-white"
+					/>
+				</label>
+			{/if}
+			<div class="max-h-96 space-y-2 overflow-y-auto pr-1">
+				{#each tableListSections as section (section.kind === 'shared' ? `group-${section.name}` : section.table.id)}
+					{#if section.kind === 'shared'}
+						<div class="-ml-2 rounded-3xl border border-stone-200 bg-stone-50/70 p-2">
+							<p
+								class="px-2 pb-2 text-[0.68rem] font-semibold tracking-wide text-stone-500 uppercase"
+							>
+								Nombre de usuario: {section.name}
+							</p>
+							<div class="flex flex-wrap gap-2">
+								{#each section.tables as table (table.id)}
+									<div
+										class={`flex min-w-[8.5rem] flex-1 items-center gap-2 rounded-2xl border p-1 transition ${tableCardClass(table)}`}
+									>
+										<a
+											href={metadataHref(`/metadata?table=${table.id}`)}
+											class={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${tableLinkClass(table)}`}
+										>
+											{table.name}
+										</a>
+										<form method="POST" action={metadataAction('deleteTable')}>
+											<input type="hidden" name="tableId" value={table.id} />
+											<button
+												class={`rounded-full border px-3 py-1 text-xs font-medium transition ${deleteButtonClass(table)}`}
+											>
+												Eliminar
+											</button>
+										</form>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{:else}
+						{@const table = section.table}
+						<div
+							class={`flex items-center gap-2 rounded-2xl border p-1 transition ${tableCardClass(table)}`}
 						>
-							Eliminar
-						</button>
-					</form>
-				</div>
-			{:else}
-				<p class="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
-					Agrega tu primera tabla para empezar a recopilar contexto.
-				</p>
-			{/each}
+							<a
+								href={metadataHref(`/metadata?table=${table.id}`)}
+								class={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${tableLinkClass(table)}`}
+							>
+								{table.name}
+							</a>
+							<form method="POST" action={metadataAction('deleteTable')}>
+								<input type="hidden" name="tableId" value={table.id} />
+								<button
+									class={`rounded-full border px-3 py-1 text-xs font-medium transition ${deleteButtonClass(table)}`}
+								>
+									Eliminar
+								</button>
+							</form>
+						</div>
+					{/if}
+				{:else}
+					<p class="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+						{data.tables.length === 0
+							? 'Agrega tu primera tabla para empezar a recopilar contexto.'
+							: 'No encontramos tablas con ese nombre.'}
+					</p>
+				{/each}
+			</div>
 		</div>
 	</aside>
 
