@@ -61,7 +61,7 @@ import type { Actions, PageServerLoad } from './$types';
 const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
 const MAX_TOOL_ROWS = 100;
-const MAX_TOOL_CALL_ROUNDS = 4;
+const MAX_TOOL_CALL_ROUNDS = 20;
 
 type MetadataJson = {
 	tableName: string;
