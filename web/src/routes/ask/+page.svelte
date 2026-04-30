@@ -123,8 +123,11 @@
 
 	type RouteHref = Parameters<typeof resolve>[0];
 
-	const askHref = (href: '/ask' | `/ask?${string}`) => {
-		return resolve(withCurrentQueryParams(page.url, href) as RouteHref);
+	const askHref = (
+		href: '/ask' | `/ask?${string}`,
+		params: Record<string, string | number | boolean | null | undefined> = {}
+	) => {
+		return resolve(withCurrentQueryParams(page.url, href, params) as RouteHref);
 	};
 	const askAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`);
@@ -150,7 +153,7 @@
 					<h2 class="text-lg font-semibold">Historial de preguntas</h2>
 				</div>
 				<a
-					href={askHref('/ask')}
+					href={askHref('/ask', { chat: null })}
 					class="rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
 				>
 					Nuevo

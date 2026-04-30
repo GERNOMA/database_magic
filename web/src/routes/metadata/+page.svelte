@@ -25,11 +25,12 @@
 	);
 
 	type RouteHref = Parameters<typeof resolve>[0];
+	const selectedTableParam = $derived(page.url.searchParams.get('table'));
 
 	const metadataHref = (href: `/metadata?${string}`) =>
 		resolve(withCurrentQueryParams(page.url, href) as RouteHref);
 	const metadataAction = (actionName: string) => {
-		return withCurrentQueryParams(page.url, `?/${actionName}`);
+		return withCurrentQueryParams(page.url, `?/${actionName}`, { table: selectedTableParam });
 	};
 </script>
 

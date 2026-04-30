@@ -1,4 +1,5 @@
 export const USER_QUERY_PARAM = 'user';
+const DEFAULT_CURRENT_QUERY_PARAMS = ['admin', USER_QUERY_PARAM];
 
 type QueryParamValue = string | number | boolean | null | undefined;
 type QueryParamSource = URL | URLSearchParams | Record<string, QueryParamValue>;
@@ -77,7 +78,12 @@ export function withQueryParams(href: string, ...sources: QueryParamSource[]) {
 export function withCurrentQueryParams(url: URL, href: string, ...overrides: QueryParamSource[]) {
 	const { prefix, search, hash } = splitHref(href);
 	const { action, search: paramSearch } = splitSvelteAction(search);
-	const params = new URLSearchParams(url.searchParams);
+	const params = new URLSearchParams();
+
+	for (const name of DEFAULT_CURRENT_QUERY_PARAMS) {
+		const value = url.searchParams.get(name);
+		if (value) params.set(name, value);
+	}
 
 	applyQueryParams(params, new URLSearchParams(paramSearch));
 	for (const override of overrides) applyQueryParams(params, override);

@@ -422,6 +422,6 @@ export const actions: Actions = {
 			.delete(askChats)
 			.where(and(eq(askChats.id, chatId), eq(askChats.userKey, currentUser)));
 
-		throw askRedirect(url, '/ask');
+		throw redirect(303, withCurrentQueryParams(url, '/ask', { chat: null }));
 	}
 };
