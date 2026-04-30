@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import './layout.css';
+	import { APP_NAME } from '$lib/app';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
@@ -20,7 +21,7 @@
 		<div
 			class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
 		>
-			<a href={resolve('/metadata')} class="text-lg font-semibold tracking-tight">Database Magic</a>
+			<a href={resolve('/metadata')} class="text-lg font-semibold tracking-tight">{APP_NAME}</a>
 			<div class="flex rounded-full border border-stone-200 bg-stone-100 p-1 text-sm">
 				{#each navItems as item (item.href)}
 					<a

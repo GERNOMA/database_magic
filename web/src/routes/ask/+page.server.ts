@@ -32,9 +32,63 @@ type MetadataJson = {
 	fields: Array<{ name: string; description: string }>;
 };
 
+type MetadataTable = typeof metadataTables.$inferSelect;
+type TableGroup = {
+	id: string;
+	label: string;
+	tableIds: number[];
+	tableNames: string[];
+};
+
 function createTitle(question: string) {
 	const compact = question.replace(/\s+/g, ' ').trim();
 	return compact.length > 52 ? `${compact.slice(0, 49)}...` : compact || 'Nuevo chat';
+}
+
+function tableLabel(table: MetadataTable) {
+	return table.userFriendlyName?.trim() || table.name;
+}
+
+function tableGroupId(label: string) {
+	return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function createTableGroups(tables: MetadataTable[], tableIdsWithMetadata: Set<number>) {
+	const groups = new Map<string, TableGroup>();
+
+	for (const table of tables) {
+		if (!tableIdsWithMetadata.has(table.id)) continue;
+
+		const label = tableLabel(table);
+		const id = tableGroupId(label);
+		const existing = groups.get(id);
+
+		if (existing) {
+			existing.tableIds.push(table.id);
+			existing.tableNames.push(table.name);
+			continue;
+		}
+
+		groups.set(id, {
+			id,
+			label,
+			tableIds: [table.id],
+			tableNames: [table.name]
+		});
+	}
+
+	return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function expandSelectedTableIds(selectedTableIds: number[], tableGroups: TableGroup[]) {
+	if (selectedTableIds.length === 0) return [];
+
+	const selectedIdSet = new Set(selectedTableIds);
+	const expandedIds = tableGroups.flatMap((group) =>
+		group.tableIds.some((tableId) => selectedIdSet.has(tableId)) ? group.tableIds : []
+	);
+
+	return [...new Set(expandedIds)];
 }
 
 function createQueryDatabaseTool(dialect: string): OpenRouterTool {
@@ -97,11 +151,23 @@ function getSelectedTableIds(form: FormData) {
 		.filter((id, index, ids) => Number.isInteger(id) && id > 0 && ids.indexOf(id) === index);
 }
 
-function createMetadataContext(rows: Array<typeof tableMetadata.$inferSelect>) {
+function createMetadataContext(
+	rows: Array<typeof tableMetadata.$inferSelect>,
+	tablesById: Map<number, MetadataTable>
+) {
 	return JSON.stringify(
 		{
 			createdAt: now(),
-			tables: rows.map((row) => JSON.parse(row.json) as MetadataJson)
+			tables: rows.map((row) => {
+				const metadata = JSON.parse(row.json) as MetadataJson;
+				const table = tablesById.get(row.tableId);
+
+				return {
+					...metadata,
+					tableName: table?.name ?? metadata.tableName,
+					umbrellaName: table ? tableLabel(table) : metadata.tableName
+				};
+			})
 		},
 		null,
 		2
@@ -113,13 +179,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
 	const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 	const tablesWithMetadata = new Set(metadataRows.map((row) => row.tableId));
-	const availableTables = tables
-		.filter((table) => tablesWithMetadata.has(table.id))
-		.map((table) => ({
-			id: table.id,
-			name: table.name,
-			label: table.userFriendlyName?.trim() || table.name
-		}));
+	const tableGroups = createTableGroups(tables, tablesWithMetadata);
 	const selectedChatId = Number(url.searchParams.get('chat') ?? 0);
 	const selectedChat = chats.find((chat) => chat.id === selectedChatId);
 	const messages = selectedChat
@@ -134,7 +194,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		chats,
 		selectedChat,
 		messages,
-		availableTables,
+		tableGroups,
 		selectedTableIds: parseSelectedTableIds(selectedChat?.selectedTableIdsJson ?? null)
 	};
 };
@@ -144,7 +204,7 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const question = String(form.get('question') ?? '').trim();
 		const chatId = Number(form.get('chatId') ?? 0);
-		const selectedTableIds = getSelectedTableIds(form);
+		const submittedTableIds = getSelectedTableIds(form);
 		if (!question) return fail(400, { error: 'Primero haz una pregunta.' });
 
 		const [connection] = await db
@@ -159,7 +219,10 @@ export const actions: Actions = {
 				error: 'Elige un tipo de base de datos compatible antes de hacer preguntas.'
 			});
 
-		const metadataRows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
+		const [metadataRows, tables] = await Promise.all([
+			db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName)),
+			db.select().from(metadataTables).orderBy(asc(metadataTables.name))
+		]);
 		if (metadataRows.length === 0)
 			return fail(400, { error: 'Genera metadatos antes de hacer preguntas.' });
 
@@ -182,6 +245,9 @@ export const actions: Actions = {
 					.orderBy(asc(askMessages.createdAt), asc(askMessages.id));
 			}
 
+			const tablesById = new Map(tables.map((table) => [table.id, table]));
+			const tableGroups = createTableGroups(tables, new Set(metadataRows.map((row) => row.tableId)));
+			const selectedTableIds = expandSelectedTableIds(submittedTableIds, tableGroups);
 			const selectedTableIdSet = new Set(selectedTableIds);
 			const rowsForContext =
 				selectedTableIds.length > 0
@@ -190,7 +256,7 @@ export const actions: Actions = {
 			if (rowsForContext.length === 0)
 				return fail(400, { error: 'Selecciona tablas que ya tengan metadatos generados.' });
 
-			const metadataContext = createMetadataContext(rowsForContext);
+			const metadataContext = createMetadataContext(rowsForContext, tablesById);
 			const dialect = getDialectName(connection.type);
 			const chatContext = previousMessages
 				.slice(-10)

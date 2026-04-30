@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { APP_NAME } from '$lib/app';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 
 <svelte:head>
-	<title>Conexión | Database Magic</title>
+	<title>Conexión | {APP_NAME}</title>
 </svelte:head>
 
 <section class="mx-auto max-w-2xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">

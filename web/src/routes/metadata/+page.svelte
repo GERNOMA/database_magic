@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { APP_NAME } from '$lib/app';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -23,7 +24,7 @@
 </script>
 
 <svelte:head>
-	<title>Metadatos | Database Magic</title>
+	<title>Metadatos | {APP_NAME}</title>
 </svelte:head>
 
 {#if form?.error}

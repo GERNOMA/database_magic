@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { APP_NAME } from '$lib/app';
 
 export type OpenRouterToolCall = {
 	id: string;
@@ -58,7 +59,7 @@ export async function createOpenRouterChatCompletion(
 			Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 			'Content-Type': 'application/json',
 			'HTTP-Referer': env.PUBLIC_APP_URL ?? 'http://localhost:5173',
-			'X-Title': 'Database Magic'
+			'X-Title': APP_NAME
 		},
 		body: JSON.stringify({
 			model: 'openai/gpt-5.5',
