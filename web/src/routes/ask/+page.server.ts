@@ -6,6 +6,13 @@ import {
 	type OpenRouterMessage,
 	type OpenRouterTool
 } from '$lib/server/ai/openrouter';
+import {
+	createAiRoutine,
+	createRoutineTool,
+	executeAiTask,
+	isCreateRoutineToolCall,
+	parseCreateRoutineArgs
+} from '$lib/server/ai/routines';
 import { db } from '$lib/server/db';
 import {
 	extractReadOnlySql,
@@ -34,7 +41,7 @@ import type { Actions, PageServerLoad } from './$types';
 const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
 const MAX_TOOL_ROWS = 100;
-const MAX_TOOL_CALL_ROUNDS = 3;
+const MAX_TOOL_CALL_ROUNDS = 4;
 
 type MetadataJson = {
 	tableName: string;
@@ -272,7 +279,7 @@ export const actions: Actions = {
 			const modelMessages: OpenRouterMessage[] = [
 				{
 					role: 'system',
-					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If you call it, use one SELECT or WITH statement only and limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
+					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If the user asks for a recurring task, periodic check, alert, notification, or scheduled report, call create_routine with the interval, SQL, original description, and desired visual report. SQL must be one SELECT or WITH statement only; limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
 				},
 				{
 					role: 'user',
@@ -282,10 +289,11 @@ export const actions: Actions = {
 			let answer = '';
 			let sql: string | null = null;
 			let rows: Array<Record<string, unknown>> | null = null;
+			let createdRoutineId: number | null = null;
 
 			for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round += 1) {
 				const assistantMessage = await createOpenRouterChatCompletion(modelMessages, {
-					tools: [createQueryDatabaseTool(dialect)]
+					tools: [createQueryDatabaseTool(dialect), createRoutineTool(dialect)]
 				});
 				const toolCalls = assistantMessage.tool_calls ?? [];
 
@@ -301,6 +309,48 @@ export const actions: Actions = {
 				});
 
 				for (const toolCall of toolCalls) {
+					if (isCreateRoutineToolCall(toolCall.function.name)) {
+						try {
+							const args = parseCreateRoutineArgs(toolCall.function.arguments);
+							const task = await createAiRoutine({
+								userKey: currentUser,
+								title: args.title,
+								description: args.description,
+								intervalMinutes: args.intervalMinutes,
+								sql: args.sql,
+								visualPrompt: args.visualPrompt,
+								selectedTableIds
+							});
+							const firstRun = await executeAiTask(task);
+							createdRoutineId = task.id;
+							sql = args.sql;
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									taskId: task.id,
+									title: task.title,
+									intervalMinutes: task.intervalMinutes,
+									firstRunOk: firstRun.ok,
+									message:
+										'Routine created. The first execution has been attempted and a notification was created.'
+								})
+							});
+						} catch (error) {
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									error:
+										error instanceof Error
+											? error.message
+											: 'Could not create the scheduled routine.'
+								})
+							});
+						}
+						continue;
+					}
+
 					if (toolCall.function.name !== QUERY_DATABASE_TOOL_NAME) {
 						modelMessages.push({
 							role: 'tool',
@@ -364,7 +414,9 @@ export const actions: Actions = {
 			await db.insert(askMessages).values({
 				chatId: activeChatId,
 				role: 'assistant',
-				content: answer,
+				content: createdRoutineId
+					? `${answer}\n\nRutina creada: ve a Tareas para verla y a Notificaciones para abrir el reporte generado.`
+					: answer,
 				sql,
 				rowsJson: rows ? JSON.stringify(rows.slice(0, MAX_TOOL_ROWS)) : null,
 				createdAt: now()

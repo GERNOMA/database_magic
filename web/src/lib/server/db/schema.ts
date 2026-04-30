@@ -69,3 +69,43 @@ export const askMessages = sqliteTable('ask_messages', {
 	rowsJson: text('rows_json'),
 	createdAt: text('created_at').notNull()
 });
+
+export const aiTasks = sqliteTable('ai_tasks', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	userKey: text('user_key').notNull().default(''),
+	title: text('title').notNull(),
+	description: text('description').notNull(),
+	intervalMinutes: integer('interval_minutes').notNull(),
+	sql: text('sql').notNull(),
+	visualPrompt: text('visual_prompt').notNull(),
+	selectedTableIdsJson: text('selected_table_ids_json').notNull().default('[]'),
+	isActive: integer('is_active').notNull().default(1),
+	lastRunAt: text('last_run_at'),
+	nextRunAt: text('next_run_at').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull()
+});
+
+export const aiTaskRuns = sqliteTable('ai_task_runs', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	taskId: integer('task_id')
+		.notNull()
+		.references(() => aiTasks.id, { onDelete: 'cascade' }),
+	status: text('status').notNull(),
+	sql: text('sql').notNull(),
+	rowsJson: text('rows_json'),
+	pageSpecJson: text('page_spec_json'),
+	error: text('error'),
+	createdAt: text('created_at').notNull()
+});
+
+export const notifications = sqliteTable('notifications', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	userKey: text('user_key').notNull().default(''),
+	taskId: integer('task_id').references(() => aiTasks.id, { onDelete: 'cascade' }),
+	runId: integer('run_id').references(() => aiTaskRuns.id, { onDelete: 'cascade' }),
+	title: text('title').notNull(),
+	message: text('message').notNull(),
+	readAt: text('read_at'),
+	createdAt: text('created_at').notNull()
+});

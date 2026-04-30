@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/app';
 	import { withCurrentQueryParams } from '$lib/query-params';
@@ -137,13 +136,13 @@
 		tableRestrictions = nextRestrictions;
 	}
 
-	type RouteHref = Parameters<typeof resolve>[0];
-	const usersHref = (href: '/users' | `/users?${string}`) =>
-		resolve(withCurrentQueryParams(page.url, href) as RouteHref);
+	const usersHref = (href: '/users' | `/users?${string}`) => withCurrentQueryParams(page.url, href);
 	const usersAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`);
 	};
 </script>
+
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 
 <svelte:head>
 	<title>Usuarios | {APP_NAME}</title>

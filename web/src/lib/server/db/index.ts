@@ -79,6 +79,44 @@ client.exec(`
 		rows_json TEXT,
 		created_at TEXT NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS ai_tasks (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_key TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		interval_minutes INTEGER NOT NULL,
+		sql TEXT NOT NULL,
+		visual_prompt TEXT NOT NULL,
+		selected_table_ids_json TEXT NOT NULL DEFAULT '[]',
+		is_active INTEGER NOT NULL DEFAULT 1,
+		last_run_at TEXT,
+		next_run_at TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS ai_task_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id INTEGER NOT NULL REFERENCES ai_tasks(id) ON DELETE CASCADE,
+		status TEXT NOT NULL,
+		sql TEXT NOT NULL,
+		rows_json TEXT,
+		page_spec_json TEXT,
+		error TEXT,
+		created_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS notifications (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_key TEXT NOT NULL DEFAULT '',
+		task_id INTEGER REFERENCES ai_tasks(id) ON DELETE CASCADE,
+		run_id INTEGER REFERENCES ai_task_runs(id) ON DELETE CASCADE,
+		title TEXT NOT NULL,
+		message TEXT NOT NULL,
+		read_at TEXT,
+		created_at TEXT NOT NULL
+	);
 `);
 
 ensureColumn('metadata_tables', 'user_friendly_name', 'user_friendly_name TEXT');
@@ -98,5 +136,11 @@ ensureColumn(
 	'table_restrictions_json',
 	"table_restrictions_json TEXT NOT NULL DEFAULT '{}'"
 );
+ensureColumn(
+	'ai_tasks',
+	'selected_table_ids_json',
+	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
+);
+ensureColumn('ai_tasks', 'is_active', 'is_active INTEGER NOT NULL DEFAULT 1');
 
 export const db = drizzle(client, { schema });
