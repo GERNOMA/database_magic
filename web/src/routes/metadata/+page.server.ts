@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { asc, desc, eq } from 'drizzle-orm';
-import { withAdminParam } from '$lib/admin';
+import { withCurrentQueryParams } from '$lib/query-params';
 import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
 import {
@@ -34,7 +34,7 @@ function extractJson<T>(value: string): T {
 	return JSON.parse(withoutFence) as T;
 }
 
-const adminRedirect = (href: string) => redirect(303, withAdminParam(href));
+const adminRedirect = (url: URL, href: string) => redirect(303, withCurrentQueryParams(url, href));
 
 export const load: PageServerLoad = async ({ url }) => {
 	const tables = await db.select().from(metadataTables).orderBy(asc(metadataTables.name));
@@ -59,7 +59,7 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	addTable: async ({ request }) => {
+	addTable: async ({ request, url }) => {
 		const form = await request.formData();
 		const name = cleanName(String(form.get('name') ?? ''));
 		if (!name) return fail(400, { error: 'El nombre de la tabla es obligatorio.' });
@@ -75,20 +75,20 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { error: 'Ya existe una tabla con ese nombre.' });
 		}
-		throw adminRedirect(`/metadata?table=${createdId}`);
+		throw adminRedirect(url, `/metadata?table=${createdId}`);
 	},
 
-	deleteTable: async ({ request }) => {
+	deleteTable: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		if (!tableId) return fail(400, { error: 'No se pudo eliminar esa tabla.' });
 
 		await db.delete(metadataTables).where(eq(metadataTables.id, tableId));
 
-		throw adminRedirect('/metadata');
+		throw adminRedirect(url, '/metadata');
 	},
 
-	saveTableUserName: async ({ request }) => {
+	saveTableUserName: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		const userFriendlyName = String(form.get('userFriendlyName') ?? '').trim();
@@ -99,10 +99,10 @@ export const actions: Actions = {
 			.set({ userFriendlyName: userFriendlyName || null, updatedAt: now() })
 			.where(eq(metadataTables.id, tableId));
 
-		throw adminRedirect(`/metadata?table=${tableId}&saved=1`);
+		throw adminRedirect(url, `/metadata?table=${tableId}&saved=1`);
 	},
 
-	autoImportTables: async () => {
+	autoImportTables: async ({ url }) => {
 		const [connection] = await db
 			.select()
 			.from(databaseConnections)
@@ -138,7 +138,7 @@ export const actions: Actions = {
 			.filter((name, index, names) => name && names.indexOf(name) === index)
 			.filter((name) => !existingNames.has(name));
 
-		if (namesToImport.length === 0) throw adminRedirect('/metadata');
+		if (namesToImport.length === 0) throw adminRedirect(url, '/metadata');
 
 		const timestamp = now();
 		const importedTables = await db
@@ -146,10 +146,10 @@ export const actions: Actions = {
 			.values(namesToImport.map((name) => ({ name, createdAt: timestamp, updatedAt: timestamp })))
 			.returning();
 
-		throw adminRedirect(`/metadata?table=${importedTables[0]?.id ?? ''}`);
+		throw adminRedirect(url, `/metadata?table=${importedTables[0]?.id ?? ''}`);
 	},
 
-	addFile: async ({ request }) => {
+	addFile: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		const file = form.get('file');
@@ -166,10 +166,10 @@ export const actions: Actions = {
 			createdAt: now()
 		});
 
-		throw adminRedirect(`/metadata?table=${tableId}`);
+		throw adminRedirect(url, `/metadata?table=${tableId}`);
 	},
 
-	addAutomaticFile: async ({ request }) => {
+	addAutomaticFile: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de agregar archivos.' });
@@ -221,10 +221,10 @@ export const actions: Actions = {
 			createdAt: now()
 		});
 
-		throw adminRedirect(`/metadata?table=${tableId}`);
+		throw adminRedirect(url, `/metadata?table=${tableId}`);
 	},
 
-	deleteFile: async ({ request }) => {
+	deleteFile: async ({ request, url }) => {
 		const form = await request.formData();
 		const fileId = Number(form.get('fileId'));
 		const tableId = Number(form.get('tableId'));
@@ -233,10 +233,10 @@ export const actions: Actions = {
 
 		await db.delete(tableFiles).where(eq(tableFiles.id, fileId));
 
-		throw adminRedirect(`/metadata?table=${tableId}`);
+		throw adminRedirect(url, `/metadata?table=${tableId}`);
 	},
 
-	analyzeTable: async ({ request }) => {
+	analyzeTable: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		if (!tableId) return fail(400, { error: 'Selecciona una tabla para analizar.' });
@@ -290,10 +290,10 @@ export const actions: Actions = {
 				error: error instanceof Error ? error.message : 'No se pudo analizar la tabla.'
 			});
 		}
-		throw adminRedirect(`/metadata?table=${tableId}`);
+		throw adminRedirect(url, `/metadata?table=${tableId}`);
 	},
 
-	saveMetadata: async ({ request }) => {
+	saveMetadata: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
 		const json = String(form.get('json') ?? '').trim();
@@ -318,10 +318,10 @@ export const actions: Actions = {
 			return fail(400, { error: 'Los metadatos deben ser JSON válido antes de poder guardarse.' });
 		}
 
-		throw adminRedirect(`/metadata?table=${tableId}&saved=1`);
+		throw adminRedirect(url, `/metadata?table=${tableId}&saved=1`);
 	},
 
-	compileAll: async () => {
+	compileAll: async ({ url }) => {
 		const rows = await db.select().from(tableMetadata).orderBy(asc(tableMetadata.fileName));
 		const compiled = {
 			createdAt: now(),
@@ -334,6 +334,6 @@ export const actions: Actions = {
 			createdAt: compiled.createdAt
 		});
 
-		throw adminRedirect('/metadata?compiled=1');
+		throw adminRedirect(url, '/metadata?compiled=1');
 	}
 };

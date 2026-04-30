@@ -1,3 +1,5 @@
+import { withQueryParams } from '$lib/query-params';
+
 const ADMIN_QUERY_PARAM = 'admin';
 const ADMIN_QUERY_VALUE = 'true';
 
@@ -6,15 +8,9 @@ export function hasAdminParam(url: URL) {
 }
 
 export function withAdminParam(href: string) {
-	const [hrefWithoutHash, hash] = href.split('#', 2);
-	const [pathname, search = ''] = hrefWithoutHash.split('?', 2);
-	const params = new URLSearchParams(search);
-	params.set(ADMIN_QUERY_PARAM, ADMIN_QUERY_VALUE);
-	const query = params.toString();
-
-	return `${pathname}${query ? `?${query}` : ''}${hash ? `#${hash}` : ''}`;
+	return withQueryParams(href, { [ADMIN_QUERY_PARAM]: ADMIN_QUERY_VALUE });
 }
 
 export function adminAction(actionName: string) {
-	return `?/${actionName}&${ADMIN_QUERY_PARAM}=${ADMIN_QUERY_VALUE}`;
+	return withAdminParam(`?/${actionName}`);
 }

@@ -1,7 +1,10 @@
 import { redirect } from '@sveltejs/kit';
-import { hasAdminParam, withAdminParam } from '$lib/admin';
+import { hasAdminParam } from '$lib/admin';
+import { withCurrentQueryParams } from '$lib/query-params';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ url }) => {
-	throw redirect(303, hasAdminParam(url) ? withAdminParam('/metadata') : '/ask');
+	const href = withCurrentQueryParams(url, hasAdminParam(url) ? '/metadata' : '/ask');
+
+	throw redirect(303, href);
 };

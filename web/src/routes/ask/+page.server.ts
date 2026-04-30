@@ -1,6 +1,6 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { hasAdminParam, withAdminParam } from '$lib/admin';
+import { getUserParam, withCurrentQueryParams } from '$lib/query-params';
 import {
 	createOpenRouterChatCompletion,
 	type OpenRouterMessage,
@@ -26,7 +26,6 @@ const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
 const MAX_TOOL_ROWS = 100;
 const MAX_TOOL_CALL_ROUNDS = 3;
-const USER_QUERY_PARAM = 'user';
 
 type MetadataJson = {
 	tableName: string;
@@ -134,27 +133,7 @@ function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
 	};
 }
 
-function getUserParam(url: URL) {
-	const user = url.searchParams.get(USER_QUERY_PARAM)?.trim() ?? '';
-	return user || null;
-}
-
-function withAskParams(url: URL, href: string) {
-	const user = getUserParam(url);
-	const [hrefWithoutHash, hash] = href.split('#', 2);
-	const [pathname, search = ''] = hrefWithoutHash.split('?', 2);
-	const params = new URLSearchParams(search);
-
-	if (user) params.set(USER_QUERY_PARAM, user);
-
-	const nextHref = `${pathname}${params.toString() ? `?${params.toString()}` : ''}${
-		hash ? `#${hash}` : ''
-	}`;
-
-	return hasAdminParam(url) ? withAdminParam(nextHref) : nextHref;
-}
-
-const askRedirect = (url: URL, href: string) => redirect(303, withAskParams(url, href));
+const askRedirect = (url: URL, href: string) => redirect(303, withCurrentQueryParams(url, href));
 
 function parseSelectedTableIds(value: string | null) {
 	if (!value) return [];

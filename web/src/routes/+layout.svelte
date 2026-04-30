@@ -2,9 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import './layout.css';
-	import { withAdminParam } from '$lib/admin';
 	import { APP_NAME } from '$lib/app';
 	import favicon from '$lib/assets/favicon.svg';
+	import { withCurrentQueryParams } from '$lib/query-params';
 
 	let { children, data } = $props();
 
@@ -16,19 +16,8 @@
 
 	type RouteHref = Parameters<typeof resolve>[0];
 
-	function withUserParam(href: string) {
-		if (!data.currentUser) return href;
-
-		const [pathname, search = ''] = href.split('?', 2);
-		const params = new URLSearchParams(search);
-		params.set('user', data.currentUser);
-
-		return `${pathname}?${params.toString()}`;
-	}
-
 	const navHref = (href: (typeof navItems)[number]['href']) => {
-		const userHref = withUserParam(href);
-		return resolve((data.isAdmin ? withAdminParam(userHref) : userHref) as RouteHref);
+		return resolve(withCurrentQueryParams(page.url, href) as RouteHref);
 	};
 	const brandHref = $derived(data.isAdmin ? navHref('/metadata') : navHref('/ask'));
 </script>

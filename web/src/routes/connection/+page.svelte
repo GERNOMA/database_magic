@@ -1,9 +1,13 @@
 <script lang="ts">
-	import { adminAction } from '$lib/admin';
+	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/app';
+	import { withCurrentQueryParams } from '$lib/query-params';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const connectionAction = (actionName: string) =>
+		withCurrentQueryParams(page.url, `?/${actionName}`);
 </script>
 
 <svelte:head>
@@ -23,7 +27,7 @@
 		</div>
 	{/if}
 
-	<form method="POST" action={adminAction('saveConnection')} class="mt-6 space-y-4">
+	<form method="POST" action={connectionAction('saveConnection')} class="mt-6 space-y-4">
 		<label class="block text-sm font-medium text-stone-700" for="type">Tipo de base de datos</label>
 		<select
 			id="type"
