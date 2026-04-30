@@ -14,7 +14,7 @@ const LIST_PAGES_TOOL_NAME = 'list_pages';
 const UPDATE_PAGE_CODE_TOOL_NAME = 'update_page_code';
 const MAX_QUERY_ROWS = 500;
 const MAX_EXECUTED_QUERIES = 12;
-const MAX_PAGE_HTML_LENGTH = 300_000;
+const MAX_PAGE_HTML_LENGTH = 300_000_000;
 
 type PageToolArgs = {
 	title?: unknown;
