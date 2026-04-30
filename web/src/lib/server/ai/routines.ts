@@ -16,7 +16,7 @@ const MIN_INTERVAL_MINUTES = 1;
 const SCHEDULER_TICK_MS = 30_000;
 const MAX_QUERY_ROWS = 500;
 const MAX_EXECUTED_QUERIES = 8;
-const MAX_REPORT_HTML_LENGTH = 250_000;
+const MAX_REPORT_HTML_LENGTH = 250_000_000;
 
 type RoutineToolArgs = {
 	title?: unknown;
