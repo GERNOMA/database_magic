@@ -13,6 +13,7 @@
 		{ label: 'Preguntar', href: '/ask', adminOnly: false },
 		{ label: 'Notificaciones', href: '/notifications', adminOnly: false },
 		{ label: 'Tareas', href: '/tasks', adminOnly: false },
+		{ label: 'Páginas', href: '/pages', adminOnly: false },
 		{ label: 'Conexión', href: '/connection', adminOnly: true }
 	] as const;
 

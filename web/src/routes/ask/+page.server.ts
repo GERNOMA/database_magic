@@ -8,11 +8,31 @@ import {
 } from '$lib/server/ai/openrouter';
 import {
 	createAiRoutine,
+	createListTasksTool,
 	createRoutineTool,
+	createUpdateTaskCodeTool,
 	executeAiTask,
 	isCreateRoutineToolCall,
-	parseCreateRoutineArgs
+	isListTasksToolCall,
+	isUpdateTaskCodeToolCall,
+	listAiTasksForUser,
+	parseCreateRoutineArgs,
+	parseUpdateTaskCodeArgs,
+	updateAiTaskCodeForUser
 } from '$lib/server/ai/routines';
+import {
+	createAiPage,
+	createListPagesTool,
+	createPageTool,
+	createUpdatePageCodeTool,
+	isCreatePageToolCall,
+	isListPagesToolCall,
+	isUpdatePageCodeToolCall,
+	listAiPagesForUser,
+	parseCreatePageArgs,
+	parseUpdatePageCodeArgs,
+	updateAiPageCodeForUser
+} from '$lib/server/ai/pages';
 import { db } from '$lib/server/db';
 import {
 	extractReadOnlySql,
@@ -279,7 +299,7 @@ export const actions: Actions = {
 			const modelMessages: OpenRouterMessage[] = [
 				{
 					role: 'system',
-					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If the user asks for a recurring task, periodic check, alert, notification, or scheduled report, call create_routine with the interval, SQL, original description, and desired visual report. SQL must be one SELECT or WITH statement only; limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
+					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If the user asks for a recurring task, periodic check, alert, notification, dashboard, or scheduled report, call create_routine. That tool stores AI-written JavaScript routine code that may call await query(sql), then returns a fixed static HTML report per run. If the user asks you to create a normal page, dynamic website, dashboard, portal, or app they can open later from Páginas, call create_page. That tool stores AI-written page code that runs every time the page is opened and may call await query(sql). If the user asks to change, iterate, recolor, redesign, or fix an existing task/page by name, first call list_tasks or list_pages to find its id and current code, then call update_task_code or update_page_code with the full replacement code. Every SQL inside query() must be one SELECT or WITH statement only; limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
 				},
 				{
 					role: 'user',
@@ -290,10 +310,21 @@ export const actions: Actions = {
 			let sql: string | null = null;
 			let rows: Array<Record<string, unknown>> | null = null;
 			let createdRoutineId: number | null = null;
+			let createdPageId: number | null = null;
+			let updatedRoutineId: number | null = null;
+			let updatedPageId: number | null = null;
 
 			for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round += 1) {
 				const assistantMessage = await createOpenRouterChatCompletion(modelMessages, {
-					tools: [createQueryDatabaseTool(dialect), createRoutineTool(dialect)]
+					tools: [
+						createQueryDatabaseTool(dialect),
+						createRoutineTool(dialect),
+						createPageTool(dialect),
+						createListTasksTool(),
+						createListPagesTool(),
+						createUpdateTaskCodeTool(),
+						createUpdatePageCodeTool()
+					]
 				});
 				const toolCalls = assistantMessage.tool_calls ?? [];
 
@@ -309,6 +340,116 @@ export const actions: Actions = {
 				});
 
 				for (const toolCall of toolCalls) {
+					if (isListTasksToolCall(toolCall.function.name)) {
+						const tasks = await listAiTasksForUser(currentUser);
+						modelMessages.push({
+							role: 'tool',
+							tool_call_id: toolCall.id,
+							content: JSON.stringify({ tasks })
+						});
+						continue;
+					}
+
+					if (isListPagesToolCall(toolCall.function.name)) {
+						const pages = await listAiPagesForUser(currentUser);
+						modelMessages.push({
+							role: 'tool',
+							tool_call_id: toolCall.id,
+							content: JSON.stringify({ pages })
+						});
+						continue;
+					}
+
+					if (isUpdateTaskCodeToolCall(toolCall.function.name)) {
+						try {
+							const args = parseUpdateTaskCodeArgs(toolCall.function.arguments);
+							const result = await updateAiTaskCodeForUser(
+								currentUser,
+								args.taskId,
+								args.routineCode
+							);
+							updatedRoutineId = result.id;
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									taskId: result.id,
+									title: result.title,
+									updated: true
+								})
+							});
+						} catch (error) {
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									error: error instanceof Error ? error.message : 'Could not update the task code.'
+								})
+							});
+						}
+						continue;
+					}
+
+					if (isUpdatePageCodeToolCall(toolCall.function.name)) {
+						try {
+							const args = parseUpdatePageCodeArgs(toolCall.function.arguments);
+							const result = await updateAiPageCodeForUser(currentUser, args.pageId, args.pageCode);
+							updatedPageId = result.id;
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									pageId: result.id,
+									title: result.title,
+									updated: true
+								})
+							});
+						} catch (error) {
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									error: error instanceof Error ? error.message : 'Could not update the page code.'
+								})
+							});
+						}
+						continue;
+					}
+
+					if (isCreatePageToolCall(toolCall.function.name)) {
+						try {
+							const args = parseCreatePageArgs(toolCall.function.arguments);
+							const page = await createAiPage({
+								userKey: currentUser,
+								title: args.title,
+								description: args.description,
+								pageCode: args.pageCode,
+								visualPrompt: args.visualPrompt,
+								selectedTableIds
+							});
+							createdPageId = page.id;
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									pageId: page.id,
+									title: page.title,
+									message: 'Dynamic page created. The user can open it from Páginas.'
+								})
+							});
+						} catch (error) {
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									error:
+										error instanceof Error ? error.message : 'Could not create the dynamic page.'
+								})
+							});
+						}
+						continue;
+					}
+
 					if (isCreateRoutineToolCall(toolCall.function.name)) {
 						try {
 							const args = parseCreateRoutineArgs(toolCall.function.arguments);
@@ -317,13 +458,12 @@ export const actions: Actions = {
 								title: args.title,
 								description: args.description,
 								intervalMinutes: args.intervalMinutes,
-								sql: args.sql,
+								routineCode: args.routineCode,
 								visualPrompt: args.visualPrompt,
 								selectedTableIds
 							});
 							const firstRun = await executeAiTask(task);
 							createdRoutineId = task.id;
-							sql = args.sql;
 							modelMessages.push({
 								role: 'tool',
 								tool_call_id: toolCall.id,
@@ -414,9 +554,19 @@ export const actions: Actions = {
 			await db.insert(askMessages).values({
 				chatId: activeChatId,
 				role: 'assistant',
-				content: createdRoutineId
-					? `${answer}\n\nRutina creada: ve a Tareas para verla y a Notificaciones para abrir el reporte generado.`
-					: answer,
+				content:
+					createdRoutineId || createdPageId || updatedRoutineId || updatedPageId
+						? `${answer}\n\n${[
+								createdRoutineId
+									? 'Rutina creada: ve a Tareas para verla y a Notificaciones para abrir el reporte generado.'
+									: '',
+								createdPageId ? 'Página creada: ve a Páginas para abrirla.' : '',
+								updatedRoutineId ? `Rutina actualizada: id ${updatedRoutineId}.` : '',
+								updatedPageId ? `Página actualizada: id ${updatedPageId}.` : ''
+							]
+								.filter(Boolean)
+								.join('\n')}`
+						: answer,
 				sql,
 				rowsJson: rows ? JSON.stringify(rows.slice(0, MAX_TOOL_ROWS)) : null,
 				createdAt: now()

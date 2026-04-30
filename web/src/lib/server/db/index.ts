@@ -86,7 +86,8 @@ client.exec(`
 		title TEXT NOT NULL,
 		description TEXT NOT NULL,
 		interval_minutes INTEGER NOT NULL,
-		sql TEXT NOT NULL,
+		sql TEXT NOT NULL DEFAULT '',
+		routine_code TEXT NOT NULL DEFAULT '',
 		visual_prompt TEXT NOT NULL,
 		selected_table_ids_json TEXT NOT NULL DEFAULT '[]',
 		is_active INTEGER NOT NULL DEFAULT 1,
@@ -100,9 +101,13 @@ client.exec(`
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		task_id INTEGER NOT NULL REFERENCES ai_tasks(id) ON DELETE CASCADE,
 		status TEXT NOT NULL,
-		sql TEXT NOT NULL,
+		sql TEXT NOT NULL DEFAULT '',
+		executed_sql_json TEXT,
 		rows_json TEXT,
 		page_spec_json TEXT,
+		report_title TEXT,
+		report_summary TEXT,
+		report_html TEXT,
 		error TEXT,
 		created_at TEXT NOT NULL
 	);
@@ -116,6 +121,18 @@ client.exec(`
 		message TEXT NOT NULL,
 		read_at TEXT,
 		created_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS ai_pages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_key TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		page_code TEXT NOT NULL,
+		visual_prompt TEXT NOT NULL,
+		selected_table_ids_json TEXT NOT NULL DEFAULT '[]',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
 	);
 `);
 
@@ -142,5 +159,15 @@ ensureColumn(
 	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
 );
 ensureColumn('ai_tasks', 'is_active', 'is_active INTEGER NOT NULL DEFAULT 1');
+ensureColumn('ai_tasks', 'routine_code', "routine_code TEXT NOT NULL DEFAULT ''");
+ensureColumn('ai_task_runs', 'executed_sql_json', 'executed_sql_json TEXT');
+ensureColumn('ai_task_runs', 'report_title', 'report_title TEXT');
+ensureColumn('ai_task_runs', 'report_summary', 'report_summary TEXT');
+ensureColumn('ai_task_runs', 'report_html', 'report_html TEXT');
+ensureColumn(
+	'ai_pages',
+	'selected_table_ids_json',
+	"selected_table_ids_json TEXT NOT NULL DEFAULT '[]'"
+);
 
 export const db = drizzle(client, { schema });

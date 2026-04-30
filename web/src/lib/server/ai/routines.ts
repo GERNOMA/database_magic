@@ -1,9 +1,5 @@
 import { and, asc, desc, eq, lte } from 'drizzle-orm';
-import {
-	askOpenRouter,
-	type OpenRouterMessage,
-	type OpenRouterTool
-} from '$lib/server/ai/openrouter';
+import type { OpenRouterTool } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
 import {
 	extractReadOnlySql,
@@ -14,16 +10,25 @@ import {
 import { aiTaskRuns, aiTasks, databaseConnections, notifications } from '$lib/server/db/schema';
 
 const CREATE_ROUTINE_TOOL_NAME = 'create_routine';
-const MAX_ROWS_FOR_REPORT = 200;
+const LIST_TASKS_TOOL_NAME = 'list_tasks';
+const UPDATE_TASK_CODE_TOOL_NAME = 'update_task_code';
 const MIN_INTERVAL_MINUTES = 1;
 const SCHEDULER_TICK_MS = 30_000;
+const MAX_QUERY_ROWS = 500;
+const MAX_EXECUTED_QUERIES = 8;
+const MAX_REPORT_HTML_LENGTH = 250_000;
 
 type RoutineToolArgs = {
 	title?: unknown;
 	description?: unknown;
 	intervalMinutes?: unknown;
-	sql?: unknown;
+	routineCode?: unknown;
 	visualPrompt?: unknown;
+};
+
+type UpdateTaskCodeArgs = {
+	taskId?: unknown;
+	routineCode?: unknown;
 };
 
 type CreateRoutineInput = {
@@ -31,48 +36,21 @@ type CreateRoutineInput = {
 	title: string;
 	description: string;
 	intervalMinutes: number;
-	sql: string;
+	routineCode: string;
 	visualPrompt: string;
 	selectedTableIds: number[];
 };
 
-export type AiReportSection =
-	| {
-			type: 'metric';
-			title: string;
-			value: string;
-			note?: string;
-	  }
-	| {
-			type: 'table';
-			title: string;
-			columns: string[];
-			rows: Array<Record<string, unknown>>;
-	  }
-	| {
-			type: 'bars';
-			title: string;
-			labelKey: string;
-			valueKey: string;
-			rows: Array<Record<string, unknown>>;
-	  }
-	| {
-			type: 'text';
-			title: string;
-			body: string;
-	  };
-
-export type AiReportSpec = {
-	title: string;
-	subtitle: string;
-	summary: string;
-	accent: string;
-	sections: AiReportSection[];
+type RoutineResult = {
+	title?: unknown;
+	summary?: unknown;
+	html?: unknown;
 };
 
 declare global {
-	var __databaseMagicAiTaskSchedulerStarted: boolean | undefined;
+	var __databaseMagicAiTaskSchedulerTimer: NodeJS.Timeout | undefined;
 	var __databaseMagicAiTaskSchedulerRunning: boolean | undefined;
+	var __databaseMagicAiTaskSchedulerCurrentRunning: boolean | undefined;
 }
 
 const now = () => new Date().toISOString();
@@ -91,47 +69,6 @@ function parseInterval(value: unknown) {
 	return Math.max(MIN_INTERVAL_MINUTES, Math.round(interval));
 }
 
-function extractJsonObject(value: string) {
-	const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? value;
-	return JSON.parse(fenced) as Partial<AiReportSpec>;
-}
-
-function normalizeReportSpec(
-	value: Partial<AiReportSpec>,
-	task: typeof aiTasks.$inferSelect,
-	rows: Array<Record<string, unknown>>
-): AiReportSpec {
-	const columns = Object.keys(rows[0] ?? {});
-	const fallbackSection: AiReportSection =
-		rows.length > 0
-			? {
-					type: 'table',
-					title: 'Datos obtenidos',
-					columns,
-					rows: rows.slice(0, 25)
-				}
-			: {
-					type: 'text',
-					title: 'Sin resultados',
-					body: 'La consulta se ejecutó correctamente, pero no devolvió filas.'
-				};
-
-	return {
-		title: cleanString(value.title, task.title) || task.title,
-		subtitle: cleanString(value.subtitle, task.description) || task.description,
-		summary:
-			cleanString(value.summary) ||
-			`La rutina ejecutó la consulta configurada y obtuvo ${rows.length} fila${
-				rows.length === 1 ? '' : 's'
-			}.`,
-		accent: cleanString(value.accent, 'stone') || 'stone',
-		sections:
-			Array.isArray(value.sections) && value.sections.length > 0
-				? value.sections
-				: [fallbackSection]
-	};
-}
-
 async function latestConnection() {
 	const [connection] = await db
 		.select()
@@ -146,12 +83,63 @@ async function latestConnection() {
 	return connection as typeof connection & { type: DatabaseType };
 }
 
+function stripCodeFence(value: string) {
+	const code = value
+		.trim()
+		.replace(/^```(?:js|javascript|ts|typescript)?\s*/i, '')
+		.replace(/```\s*$/i, '')
+		.trim();
+	const functionBody = code.match(/^(?:async\s+)?function\s+\w*\s*\([^)]*\)\s*\{([\s\S]*)\}$/);
+	if (functionBody?.[1]) return functionBody[1].trim();
+	return code;
+}
+
+function escapeHtml(value: unknown) {
+	return String(value ?? '')
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
+function sanitizeReportHtml(value: string) {
+	return value
+		.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+		.replace(/\son\w+="[^"]*"/gi, '')
+		.replace(/\son\w+='[^']*'/gi, '')
+		.replace(/javascript:/gi, '');
+}
+
+function validateRoutineCode(code: string) {
+	const forbidden = [
+		/\bimport\b/,
+		/\brequire\s*\(/,
+		/\bprocess\b/,
+		/\bchild_process\b/,
+		/\bfs\b/,
+		/\bfetch\s*\(/,
+		/\beval\s*\(/,
+		/\bFunction\b/,
+		/\bconstructor\b/,
+		/\bglobalThis\b/,
+		/\bglobal\b/,
+		/\bwindow\b/,
+		/\bdocument\b/,
+		/<script/i
+	];
+
+	if (forbidden.some((pattern) => pattern.test(code))) {
+		throw new Error('El código de la rutina usa APIs no permitidas.');
+	}
+}
+
 export function createRoutineTool(dialect: string): OpenRouterTool {
 	return {
 		type: 'function',
 		function: {
 			name: CREATE_ROUTINE_TOOL_NAME,
-			description: `Create a recurring read-only ${dialect} SQL routine for the current user. Use it when the user asks to periodically run a query, monitor data, or notify them every N minutes/hours/days. The routine stores the SQL, executes it on schedule, creates a notification, and builds a visual report from the user's requested style.`,
+			description: `Create a recurring AI-coded ${dialect} mini website generator for the current user. Use it when the user asks to periodically run queries, monitor data, create dashboards, or notify them every N minutes/hours/days. The stored routine is JavaScript function-body code that may call query(sql) one or more times, then returns a fixed static HTML report for the notification page.`,
 			parameters: {
 				type: 'object',
 				properties: {
@@ -168,10 +156,10 @@ export function createRoutineTool(dialect: string): OpenRouterTool {
 						description:
 							'How often the routine repeats, in minutes. Convert hours/days to minutes. Minimum is 1.'
 					},
-					sql: {
+					routineCode: {
 						type: 'string',
 						description:
-							'One read-only SELECT or WITH statement. Do not include comments, mutations, PRAGMAs, or multiple statements. Add a LIMIT for broad result sets.'
+							'JavaScript async function body. Available helpers: await query(sql), escapeHtml(value), formatNumber(value), Date, Math, JSON. It must return { title, summary, html }. The html must be a complete static visual report fragment with inline CSS and no scripts. Every SQL passed to query() must be one read-only SELECT or WITH statement.'
 					},
 					visualPrompt: {
 						type: 'string',
@@ -179,7 +167,50 @@ export function createRoutineTool(dialect: string): OpenRouterTool {
 							'The visual report the user asked for, in Spanish. Include chart/table/card preferences and important context for the page builder.'
 					}
 				},
-				required: ['title', 'description', 'intervalMinutes', 'sql', 'visualPrompt'],
+				required: ['title', 'description', 'intervalMinutes', 'routineCode', 'visualPrompt'],
+				additionalProperties: false
+			}
+		}
+	};
+}
+
+export function createListTasksTool(): OpenRouterTool {
+	return {
+		type: 'function',
+		function: {
+			name: LIST_TASKS_TOOL_NAME,
+			description:
+				'List every scheduled AI task owned by the current user, including ids, descriptions, intervals, current code, and scheduling values. Use this before changing a task by name or when the user asks what tasks exist.',
+			parameters: {
+				type: 'object',
+				properties: {},
+				additionalProperties: false
+			}
+		}
+	};
+}
+
+export function createUpdateTaskCodeTool(): OpenRouterTool {
+	return {
+		type: 'function',
+		function: {
+			name: UPDATE_TASK_CODE_TOOL_NAME,
+			description:
+				'Update the JavaScript routine code of an existing scheduled task owned by the current user. Use list_tasks first if the user identifies the task by name instead of id.',
+			parameters: {
+				type: 'object',
+				properties: {
+					taskId: {
+						type: 'number',
+						description: 'The id of the task to update.'
+					},
+					routineCode: {
+						type: 'string',
+						description:
+							'New JavaScript async function body. Available helpers: await query(sql), escapeHtml(value), formatNumber(value), Date, Math, JSON. It must return { title, summary, html }. The html must be static, with inline CSS and no scripts.'
+					}
+				},
+				required: ['taskId', 'routineCode'],
 				additionalProperties: false
 			}
 		}
@@ -190,18 +221,88 @@ export function isCreateRoutineToolCall(name: string) {
 	return name === CREATE_ROUTINE_TOOL_NAME;
 }
 
+export function isListTasksToolCall(name: string) {
+	return name === LIST_TASKS_TOOL_NAME;
+}
+
+export function isUpdateTaskCodeToolCall(name: string) {
+	return name === UPDATE_TASK_CODE_TOOL_NAME;
+}
+
 export function parseCreateRoutineArgs(value: string) {
 	const parsed = JSON.parse(value) as RoutineToolArgs;
 	const title = cleanString(parsed.title, 'Rutina programada');
 	const description = cleanString(parsed.description);
 	const visualPrompt = cleanString(parsed.visualPrompt, description || title);
-	const sql = extractReadOnlySql(cleanString(parsed.sql));
+	const routineCode = stripCodeFence(cleanString(parsed.routineCode));
 	const intervalMinutes = parseInterval(parsed.intervalMinutes);
 
 	if (!description) throw new Error('La rutina necesita una descripción.');
 	if (!visualPrompt) throw new Error('La rutina necesita una descripción visual.');
+	if (!routineCode) throw new Error('La rutina necesita código ejecutable.');
+	validateRoutineCode(routineCode);
 
-	return { title, description, visualPrompt, sql, intervalMinutes };
+	return { title, description, visualPrompt, routineCode, intervalMinutes };
+}
+
+export function parseUpdateTaskCodeArgs(value: string) {
+	const parsed = JSON.parse(value) as UpdateTaskCodeArgs;
+	const taskId = Number(parsed.taskId);
+	const routineCode = stripCodeFence(cleanString(parsed.routineCode));
+
+	if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('La tarea necesita un id válido.');
+	if (!routineCode) throw new Error('La tarea necesita nuevo código ejecutable.');
+	validateRoutineCode(routineCode);
+
+	return { taskId, routineCode };
+}
+
+export async function listAiTasksForUser(userKey: string) {
+	const tasks = await db
+		.select()
+		.from(aiTasks)
+		.where(eq(aiTasks.userKey, userKey))
+		.orderBy(desc(aiTasks.updatedAt), desc(aiTasks.id));
+
+	return tasks.map((task) => ({
+		id: task.id,
+		userKey: task.userKey,
+		title: task.title,
+		description: task.description,
+		intervalMinutes: task.intervalMinutes,
+		routineCode: task.routineCode,
+		visualPrompt: task.visualPrompt,
+		selectedTableIdsJson: task.selectedTableIdsJson,
+		isActive: task.isActive,
+		lastRunAt: task.lastRunAt,
+		nextRunAt: task.nextRunAt,
+		createdAt: task.createdAt,
+		updatedAt: task.updatedAt
+	}));
+}
+
+export async function updateAiTaskCodeForUser(
+	userKey: string,
+	taskId: number,
+	routineCode: string
+) {
+	const [task] = await db
+		.select()
+		.from(aiTasks)
+		.where(and(eq(aiTasks.id, taskId), eq(aiTasks.userKey, userKey)))
+		.limit(1);
+	if (!task) throw new Error('No se encontró esa tarea.');
+
+	await db
+		.update(aiTasks)
+		.set({
+			routineCode,
+			sql: '',
+			updatedAt: now()
+		})
+		.where(and(eq(aiTasks.id, taskId), eq(aiTasks.userKey, userKey)));
+
+	return { id: task.id, title: task.title, updated: true };
 }
 
 export async function createAiRoutine(input: CreateRoutineInput) {
@@ -213,7 +314,8 @@ export async function createAiRoutine(input: CreateRoutineInput) {
 			title: input.title,
 			description: input.description,
 			intervalMinutes: input.intervalMinutes,
-			sql: input.sql,
+			sql: '',
+			routineCode: input.routineCode,
 			visualPrompt: input.visualPrompt,
 			selectedTableIdsJson: JSON.stringify(input.selectedTableIds),
 			isActive: 1,
@@ -226,36 +328,115 @@ export async function createAiRoutine(input: CreateRoutineInput) {
 	return task;
 }
 
-async function buildReportSpec(
+async function executeRoutineCode(
 	task: typeof aiTasks.$inferSelect,
-	rows: Array<Record<string, unknown>>
+	connection: Awaited<ReturnType<typeof latestConnection>>
 ) {
-	const messages: OpenRouterMessage[] = [
-		{
-			role: 'system',
-			content:
-				'You design a beautiful SvelteKit report page as JSON only. Return a JSON object with title, subtitle, summary, accent, and sections. Sections can be metric, table, bars, or text. Use Spanish. Keep tables and bars compact, use values that exist in the rows, and make the visual structure match the user request.'
-		},
-		{
-			role: 'user',
-			content: JSON.stringify(
-				{
-					task: {
-						title: task.title,
-						description: task.description,
-						visualPrompt: task.visualPrompt,
-						sql: task.sql
-					},
-					rows: rows.slice(0, MAX_ROWS_FOR_REPORT)
-				},
-				null,
-				2
-			)
+	const executedSql: string[] = [];
+	const query = async (sqlValue: unknown) => {
+		if (executedSql.length >= MAX_EXECUTED_QUERIES) {
+			throw new Error(`La rutina superó el máximo de ${MAX_EXECUTED_QUERIES} consultas.`);
 		}
-	];
 
-	const content = await askOpenRouter(messages, { json: true });
-	return normalizeReportSpec(extractJsonObject(content), task, rows);
+		const sql = extractReadOnlySql(cleanString(sqlValue));
+		const rows = await runReadOnlyQuery(connection.type, connection.connectionString, sql);
+		executedSql.push(sql);
+		return rows.slice(0, MAX_QUERY_ROWS);
+	};
+
+	if (!task.routineCode && task.sql) {
+		const rows = await query(task.sql);
+		const columns = Object.keys(rows[0] ?? {});
+		const tableRows = rows
+			.slice(0, 50)
+			.map(
+				(row) =>
+					`<tr>${columns
+						.map(
+							(column) =>
+								`<td style="padding:8px;border-bottom:1px solid #eee">${escapeHtml(row[column])}</td>`
+						)
+						.join('')}</tr>`
+			)
+			.join('');
+
+		return {
+			title: task.title,
+			summary: `La rutina heredada ejecutó 1 consulta y obtuvo ${rows.length} fila${
+				rows.length === 1 ? '' : 's'
+			}.`,
+			html: `<section style="font-family:Inter,system-ui,sans-serif;padding:32px;color:#1c1917"><h1>${escapeHtml(
+				task.title
+			)}</h1><p>${escapeHtml(task.description)}</p><table style="width:100%;border-collapse:collapse;margin-top:24px"><thead><tr>${columns
+				.map(
+					(column) =>
+						`<th style="text-align:left;border-bottom:1px solid #ddd;padding:8px">${escapeHtml(column)}</th>`
+				)
+				.join('')}</tr></thead><tbody>${tableRows}</tbody></table></section>`,
+			executedSql
+		};
+	}
+
+	const formatNumber = (value: unknown) =>
+		new Intl.NumberFormat('es').format(Number.isFinite(Number(value)) ? Number(value) : 0);
+	const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+		...args: string[]
+	) => (...args: unknown[]) => Promise<RoutineResult>;
+	const run = new AsyncFunction(
+		'query',
+		'escapeHtml',
+		'formatNumber',
+		'Date',
+		'Math',
+		'JSON',
+		'Array',
+		'Object',
+		'String',
+		'Number',
+		'Boolean',
+		'console',
+		'process',
+		'require',
+		'globalThis',
+		'global',
+		'fetch',
+		'eval',
+		'Function',
+		task.routineCode
+	);
+
+	const result = await run(
+		query,
+		escapeHtml,
+		formatNumber,
+		Date,
+		Math,
+		JSON,
+		Array,
+		Object,
+		String,
+		Number,
+		Boolean,
+		{ log: () => undefined },
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		undefined
+	);
+	const title = cleanString(result?.title, task.title) || task.title;
+	const summary =
+		cleanString(result?.summary) ||
+		`La rutina ejecutó ${executedSql.length} consulta${executedSql.length === 1 ? '' : 's'}.`;
+	const html = sanitizeReportHtml(cleanString(result?.html));
+
+	if (!html) throw new Error('La rutina no devolvió HTML para la página final.');
+	if (html.length > MAX_REPORT_HTML_LENGTH)
+		throw new Error('La página generada es demasiado grande.');
+
+	return { title, summary, html, executedSql };
 }
 
 export async function executeAiTask(task: typeof aiTasks.$inferSelect) {
@@ -263,16 +444,19 @@ export async function executeAiTask(task: typeof aiTasks.$inferSelect) {
 	const connection = await latestConnection();
 
 	try {
-		const rows = await runReadOnlyQuery(connection.type, connection.connectionString, task.sql);
-		const pageSpec = await buildReportSpec(task, rows);
+		const report = await executeRoutineCode(task, connection);
 		const [run] = await db
 			.insert(aiTaskRuns)
 			.values({
 				taskId: task.id,
 				status: 'success',
-				sql: task.sql,
-				rowsJson: JSON.stringify(rows.slice(0, MAX_ROWS_FOR_REPORT)),
-				pageSpecJson: JSON.stringify(pageSpec),
+				sql: report.executedSql.join('\n--- ---\n'),
+				executedSqlJson: JSON.stringify(report.executedSql),
+				rowsJson: null,
+				pageSpecJson: null,
+				reportTitle: report.title,
+				reportSummary: report.summary,
+				reportHtml: report.html,
 				error: null,
 				createdAt: timestamp
 			})
@@ -282,8 +466,8 @@ export async function executeAiTask(task: typeof aiTasks.$inferSelect) {
 			userKey: task.userKey,
 			taskId: task.id,
 			runId: run.id,
-			title: pageSpec.title,
-			message: pageSpec.summary,
+			title: report.title,
+			message: report.summary,
 			readAt: null,
 			createdAt: timestamp
 		});
@@ -305,9 +489,13 @@ export async function executeAiTask(task: typeof aiTasks.$inferSelect) {
 			.values({
 				taskId: task.id,
 				status: 'error',
-				sql: task.sql,
+				sql: '',
+				executedSqlJson: null,
 				rowsJson: null,
 				pageSpecJson: null,
+				reportTitle: null,
+				reportSummary: null,
+				reportHtml: null,
 				error: message,
 				createdAt: timestamp
 			})
@@ -337,8 +525,8 @@ export async function executeAiTask(task: typeof aiTasks.$inferSelect) {
 }
 
 export async function runDueAiTasks() {
-	if (globalThis.__databaseMagicAiTaskSchedulerRunning) return;
-	globalThis.__databaseMagicAiTaskSchedulerRunning = true;
+	if (globalThis.__databaseMagicAiTaskSchedulerCurrentRunning) return;
+	globalThis.__databaseMagicAiTaskSchedulerCurrentRunning = true;
 
 	try {
 		const dueTasks = await db
@@ -351,17 +539,22 @@ export async function runDueAiTasks() {
 			await executeAiTask(task);
 		}
 	} finally {
-		globalThis.__databaseMagicAiTaskSchedulerRunning = false;
+		globalThis.__databaseMagicAiTaskSchedulerCurrentRunning = false;
 	}
 }
 
 export function startAiTaskScheduler() {
-	if (globalThis.__databaseMagicAiTaskSchedulerStarted) return;
-	globalThis.__databaseMagicAiTaskSchedulerStarted = true;
+	// Pre-upgrade dev HMR intervals used this legacy flag. Keep it true so stale intervals no-op.
+	globalThis.__databaseMagicAiTaskSchedulerRunning = true;
+
+	if (globalThis.__databaseMagicAiTaskSchedulerTimer) {
+		clearInterval(globalThis.__databaseMagicAiTaskSchedulerTimer);
+	}
 
 	void runDueAiTasks();
 	const timer = setInterval(() => {
 		void runDueAiTasks();
 	}, SCHEDULER_TICK_MS);
 	timer.unref?.();
+	globalThis.__databaseMagicAiTaskSchedulerTimer = timer;
 }

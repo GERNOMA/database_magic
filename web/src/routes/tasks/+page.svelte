@@ -48,14 +48,15 @@
 	</div>
 {/if}
 
-<div class="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm">
+<div class="rounded-4xl border border-stone-200 bg-white p-6 shadow-sm">
 	<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
 		<div>
 			<p class="text-sm font-medium tracking-[0.2em] text-stone-400 uppercase">Rutinas de IA</p>
 			<h1 class="mt-2 text-3xl font-semibold tracking-tight">Tareas programadas</h1>
 			<p class="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
-				Cada tarea ejecuta el SQL que creó la IA en su intervalo, genera una notificación y
-				construye una página visual con los datos obtenidos.
+				Cada tarea ejecuta el código que creó la IA en su intervalo. Ese código puede consultar la
+				base con SQL de solo lectura y entrega una página HTML final, fija y lista para abrir desde
+				una notificación.
 			</p>
 		</div>
 		<a
@@ -76,8 +77,8 @@
 	<div class="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-10 text-center">
 		<h2 class="text-xl font-semibold">Todavía no hay tareas</h2>
 		<p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-stone-500">
-			Pídele al asistente algo como: “cada 5 minutos revisa ventas por región y muéstrame un
-			dashboard con barras y métricas principales”.
+			Pídele al asistente algo como: “cada 5 minutos crea un dashboard de ventas por región, con
+			métricas principales, barras y una alerta visual si baja el total”.
 		</p>
 	</div>
 {:else}
@@ -108,7 +109,7 @@
 						<h2 class="mt-4 text-2xl font-semibold tracking-tight">{task.title}</h2>
 						<p class="mt-2 text-sm leading-6 text-stone-600">{task.description}</p>
 						<p class="mt-3 text-sm leading-6 text-stone-500">
-							<span class="font-medium text-stone-700">Visual:</span>
+							<span class="font-medium text-stone-700">Página final:</span>
 							{task.visualPrompt}
 						</p>
 					</div>
@@ -134,9 +135,11 @@
 				{#if data.isAdmin}
 					<div class="border-t border-stone-100 bg-stone-950 p-5 text-stone-100">
 						<p class="text-xs font-medium tracking-[0.18em] text-stone-400 uppercase">
-							SQL ejecutado
+							Super código de la tarea
 						</p>
-						<pre class="mt-3 overflow-auto text-sm leading-6 whitespace-pre-wrap">{task.sql}</pre>
+						<pre
+							class="mt-3 overflow-auto text-sm leading-6 whitespace-pre-wrap">{task.routineCode ||
+								task.sql}</pre>
 					</div>
 				{/if}
 

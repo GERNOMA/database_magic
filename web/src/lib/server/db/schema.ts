@@ -76,7 +76,8 @@ export const aiTasks = sqliteTable('ai_tasks', {
 	title: text('title').notNull(),
 	description: text('description').notNull(),
 	intervalMinutes: integer('interval_minutes').notNull(),
-	sql: text('sql').notNull(),
+	sql: text('sql').notNull().default(''),
+	routineCode: text('routine_code').notNull().default(''),
 	visualPrompt: text('visual_prompt').notNull(),
 	selectedTableIdsJson: text('selected_table_ids_json').notNull().default('[]'),
 	isActive: integer('is_active').notNull().default(1),
@@ -92,9 +93,13 @@ export const aiTaskRuns = sqliteTable('ai_task_runs', {
 		.notNull()
 		.references(() => aiTasks.id, { onDelete: 'cascade' }),
 	status: text('status').notNull(),
-	sql: text('sql').notNull(),
+	sql: text('sql').notNull().default(''),
+	executedSqlJson: text('executed_sql_json'),
 	rowsJson: text('rows_json'),
 	pageSpecJson: text('page_spec_json'),
+	reportTitle: text('report_title'),
+	reportSummary: text('report_summary'),
+	reportHtml: text('report_html'),
 	error: text('error'),
 	createdAt: text('created_at').notNull()
 });
@@ -108,4 +113,16 @@ export const notifications = sqliteTable('notifications', {
 	message: text('message').notNull(),
 	readAt: text('read_at'),
 	createdAt: text('created_at').notNull()
+});
+
+export const aiPages = sqliteTable('ai_pages', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	userKey: text('user_key').notNull().default(''),
+	title: text('title').notNull(),
+	description: text('description').notNull(),
+	pageCode: text('page_code').notNull(),
+	visualPrompt: text('visual_prompt').notNull(),
+	selectedTableIdsJson: text('selected_table_ids_json').notNull().default('[]'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull()
 });
