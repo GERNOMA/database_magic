@@ -9,8 +9,26 @@ export type TableGroup = {
 	tableNames: string[];
 };
 
+export function parseTableCategories(table: MetadataTable) {
+	const value = table.userFriendlyName?.trim();
+	if (!value) return [];
+
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		if (!Array.isArray(parsed)) return [value];
+
+		return parsed
+			.filter((category): category is string => typeof category === 'string')
+			.map((category) => category.trim())
+			.filter((category, index, categories) => category && categories.indexOf(category) === index);
+	} catch {
+		return [value];
+	}
+}
+
 export function tableLabel(table: MetadataTable) {
-	return table.userFriendlyName?.trim() || table.name;
+	const categories = parseTableCategories(table);
+	return categories.length > 0 ? categories.join(', ') : table.name;
 }
 
 function tableGroupId(label: string) {
@@ -23,22 +41,26 @@ export function createTableGroups(tables: MetadataTable[], tableIdsWithMetadata:
 	for (const table of tables) {
 		if (!tableIdsWithMetadata.has(table.id)) continue;
 
-		const label = tableLabel(table);
-		const id = tableGroupId(label);
-		const existing = groups.get(id);
+		const labels = parseTableCategories(table);
+		const tableLabels = labels.length > 0 ? labels : [table.name];
 
-		if (existing) {
-			existing.tableIds.push(table.id);
-			existing.tableNames.push(table.name);
-			continue;
+		for (const label of tableLabels) {
+			const id = tableGroupId(label);
+			const existing = groups.get(id);
+
+			if (existing) {
+				existing.tableIds.push(table.id);
+				existing.tableNames.push(table.name);
+				continue;
+			}
+
+			groups.set(id, {
+				id,
+				label,
+				tableIds: [table.id],
+				tableNames: [table.name]
+			});
 		}
-
-		groups.set(id, {
-			id,
-			label,
-			tableIds: [table.id],
-			tableNames: [table.name]
-		});
 	}
 
 	return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));

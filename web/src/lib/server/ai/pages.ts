@@ -118,7 +118,7 @@ export function createPageTool(dialect: string): OpenRouterTool {
 		type: 'function',
 		function: {
 			name: CREATE_PAGE_TOOL_NAME,
-			description: `Create a saved dynamic ${dialect} web page for the current user. Use it when the user asks you to build a page, dashboard, portal, report, or visual app that should be opened later from Páginas. The stored page is JavaScript function-body code that runs whenever the page is opened and may call query(sql) one or more times.`,
+			description: `Create a saved dynamic ${dialect} web page for the current user. Use it when the user asks you to build a page, dashboard, portal, report, visual app, graph, chart, table, or large result. The stored page is JavaScript function-body code that runs whenever the page is opened and may call query(sql) one or more times. In Preguntar, the first render is also shown inside the chat as the final answer.`,
 			parameters: {
 				type: 'object',
 				properties: {

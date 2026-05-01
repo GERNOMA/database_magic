@@ -31,6 +31,7 @@ import {
 	listAiPagesForUser,
 	parseCreatePageArgs,
 	parseUpdatePageCodeArgs,
+	renderAiPage,
 	updateAiPageCodeForUser
 } from '$lib/server/ai/pages';
 import { db } from '$lib/server/db';
@@ -52,6 +53,7 @@ import {
 	createTableGroups,
 	expandSelectedTableIds,
 	getSelectedTableIds,
+	parseTableCategories,
 	parseTableIdsJson,
 	parseTableRestrictionsJson,
 	tableLabel
@@ -60,16 +62,29 @@ import type { Actions, PageServerLoad } from './$types';
 
 const now = () => new Date().toISOString();
 const QUERY_DATABASE_TOOL_NAME = 'query_database';
+const GET_TABLE_METADATA_TOOL_NAME = 'get_table_metadata';
 const MAX_TOOL_ROWS = 100;
 const MAX_TOOL_CALL_ROUNDS = 20;
 
 type MetadataJson = {
 	tableName: string;
 	generalDescription: string;
-	fields: Array<{ name: string; description: string }>;
+	fields?: Array<{ name: string; description: string }>;
+	[key: string]: unknown;
 };
 
 type MetadataTable = typeof metadataTables.$inferSelect;
+
+type AnswerPageArtifact = {
+	type: 'html';
+	pageId: number;
+	title: string;
+	description: string;
+	html: string;
+	executedSql: string[];
+	pageCode: string;
+	createdAt: string;
+};
 
 function createTitle(question: string) {
 	const compact = question.replace(/\s+/g, ' ').trim();
@@ -98,12 +113,53 @@ function createQueryDatabaseTool(dialect: string): OpenRouterTool {
 	};
 }
 
+function createTableMetadataTool(): OpenRouterTool {
+	return {
+		type: 'function',
+		function: {
+			name: GET_TABLE_METADATA_TOOL_NAME,
+			description:
+				'Return the full JSON metadata for selected table names in the current chat scope, including fields and any stored examples. Use this before writing SQL or generated page code when column names or detailed table structure are needed.',
+			parameters: {
+				type: 'object',
+				properties: {
+					tableNames: {
+						type: 'array',
+						description:
+							'Physical table names or friendly table/group labels from the initial metadata list.',
+						items: { type: 'string' }
+					}
+				},
+				required: ['tableNames'],
+				additionalProperties: false
+			}
+		}
+	};
+}
+
 function parseQueryDatabaseArgs(value: string) {
 	const parsed = JSON.parse(value) as { sql?: unknown };
 	if (typeof parsed.sql !== 'string' || parsed.sql.trim().length === 0) {
 		throw new Error('The SQL tool call did not include a query.');
 	}
 	return { sql: extractReadOnlySql(parsed.sql) };
+}
+
+function parseTableMetadataArgs(value: string) {
+	const parsed = JSON.parse(value) as { tableNames?: unknown };
+	if (!Array.isArray(parsed.tableNames)) {
+		throw new Error('The metadata tool call did not include tableNames.');
+	}
+
+	const tableNames = parsed.tableNames
+		.filter((tableName): tableName is string => typeof tableName === 'string')
+		.map((tableName) => tableName.trim())
+		.filter((tableName, index, tableNames) => tableName && tableNames.indexOf(tableName) === index);
+	if (tableNames.length === 0) {
+		throw new Error('The metadata tool call did not include any valid table names.');
+	}
+
+	return { tableNames };
 }
 
 function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
@@ -119,7 +175,29 @@ function createToolResult(sql: string, rows: Array<Record<string, unknown>>) {
 
 const askRedirect = (url: URL, href: string) => redirect(303, withCurrentQueryParams(url, href));
 
-function createMetadataContext(
+function normalizeTableLookupName(value: string) {
+	return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function parseMetadataJson(row: typeof tableMetadata.$inferSelect) {
+	return JSON.parse(row.json) as MetadataJson;
+}
+
+function createMetadataEntry(
+	row: typeof tableMetadata.$inferSelect,
+	tablesById: Map<number, MetadataTable>,
+	tableRestrictions: Map<number, string>
+) {
+	const metadata = parseMetadataJson(row);
+	const table = tablesById.get(row.tableId);
+	const tableName = table?.name ?? metadata.tableName;
+	const umbrellaName = table ? tableLabel(table) : metadata.tableName;
+	const restriction = tableRestrictions.get(row.tableId);
+
+	return { metadata, table, tableName, umbrellaName, restriction };
+}
+
+function createSlimMetadataContext(
 	rows: Array<typeof tableMetadata.$inferSelect>,
 	tablesById: Map<number, MetadataTable>,
 	tableRestrictions: Map<number, string>
@@ -128,14 +206,16 @@ function createMetadataContext(
 		{
 			createdAt: now(),
 			tables: rows.map((row) => {
-				const metadata = JSON.parse(row.json) as MetadataJson;
-				const table = tablesById.get(row.tableId);
-				const restriction = tableRestrictions.get(row.tableId);
+				const { metadata, tableName, umbrellaName, restriction } = createMetadataEntry(
+					row,
+					tablesById,
+					tableRestrictions
+				);
 
 				return {
-					...metadata,
-					tableName: table?.name ?? metadata.tableName,
-					umbrellaName: table ? tableLabel(table) : metadata.tableName,
+					tableName,
+					description: metadata.generalDescription,
+					...(umbrellaName !== tableName ? { umbrellaName } : {}),
 					...(restriction ? { restriction } : {})
 				};
 			})
@@ -143,6 +223,69 @@ function createMetadataContext(
 		null,
 		2
 	);
+}
+
+function createFullMetadataEntry(
+	row: typeof tableMetadata.$inferSelect,
+	tablesById: Map<number, MetadataTable>,
+	tableRestrictions: Map<number, string>
+) {
+	const { metadata, tableName, umbrellaName, restriction } = createMetadataEntry(
+		row,
+		tablesById,
+		tableRestrictions
+	);
+
+	return {
+		...metadata,
+		tableName,
+		umbrellaName,
+		...(restriction ? { restriction } : {})
+	};
+}
+
+function metadataLookupNames(
+	row: typeof tableMetadata.$inferSelect,
+	tablesById: Map<number, MetadataTable>
+) {
+	const metadata = parseMetadataJson(row);
+	const table = tablesById.get(row.tableId);
+	const values = [metadata.tableName, table?.name, table ? tableLabel(table) : null];
+	if (table) values.push(...parseTableCategories(table));
+
+	return values
+		.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+		.map(normalizeTableLookupName);
+}
+
+function createFullMetadataResult(
+	tableNames: string[],
+	rows: Array<typeof tableMetadata.$inferSelect>,
+	tablesById: Map<number, MetadataTable>,
+	tableRestrictions: Map<number, string>
+) {
+	const requestedNames = new Set(tableNames.map(normalizeTableLookupName));
+	const matchedTableIds = new Set<number>();
+	const matchedRequestNames = new Set<string>();
+
+	for (const row of rows) {
+		const lookupNames = metadataLookupNames(row, tablesById);
+		for (const requestedName of requestedNames) {
+			if (!lookupNames.includes(requestedName)) continue;
+
+			matchedTableIds.add(row.tableId);
+			matchedRequestNames.add(requestedName);
+		}
+	}
+
+	return {
+		tables: rows
+			.filter((row) => matchedTableIds.has(row.tableId))
+			.map((row) => createFullMetadataEntry(row, tablesById, tableRestrictions)),
+		unavailableTableNames: tableNames.filter(
+			(tableName) => !matchedRequestNames.has(normalizeTableLookupName(tableName))
+		)
+	};
 }
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -281,10 +424,11 @@ export const actions: Actions = {
 			if (rowsForContext.length === 0)
 				return fail(400, { error: 'Selecciona tablas que ya tengan metadatos generados.' });
 
-			const metadataContext = createMetadataContext(
+			const tableRestrictions = parseTableRestrictionsJson(registeredUser.tableRestrictionsJson);
+			const metadataContext = createSlimMetadataContext(
 				rowsForContext,
 				tablesById,
-				parseTableRestrictionsJson(registeredUser.tableRestrictionsJson)
+				tableRestrictions
 			);
 			const dialect = getDialectName(connection.type);
 			const chatContext = previousMessages
@@ -299,7 +443,7 @@ export const actions: Actions = {
 			const modelMessages: OpenRouterMessage[] = [
 				{
 					role: 'system',
-					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If the user asks for a recurring task, periodic check, alert, notification, dashboard, or scheduled report, call create_routine. That tool stores AI-written JavaScript routine code that may call await query(sql), then returns a fixed static HTML report per run. If the user asks you to create a normal page, dynamic website, dashboard, portal, or app they can open later from Páginas, call create_page. That tool stores AI-written page code that runs every time the page is opened and may call await query(sql). If the user asks to change, iterate, recolor, redesign, or fix an existing task/page by name, first call list_tasks or list_pages to find its id and current code, then call update_task_code or update_page_code with the full replacement code. Every SQL inside query() must be one SELECT or WITH statement only; limit broad result sets to ${MAX_TOOL_ROWS} rows. After any tool result, give a concise human answer and do not invent facts outside the result.`
+					content: `You are a read-only database assistant for ${dialect}. Answer in Spanish from database metadata and prior chat when that is enough. The initial Database metadata intentionally contains only table names, descriptions, friendly labels, and restrictions; it omits fields and examples to save tokens. Before writing SQL or generated page code that depends on column names, call ${GET_TABLE_METADATA_TOOL_NAME} with the needed table names. You may call ${QUERY_DATABASE_TOOL_NAME} when live database values are needed, but the tool is optional. If the user asks for a table, graph, chart, dashboard, visual app, page, or large result, call create_page. That single page tool stores AI-written JavaScript page code in Páginas, runs every time the page is opened, may call await query(sql), and its first render is shown directly in this chat as the final answer. If the user asks for a recurring task, periodic check, alert, notification, dashboard, or scheduled report, call create_routine. That tool stores AI-written JavaScript routine code that may call await query(sql), then returns a fixed static HTML report per run. If the user asks to change, iterate, recolor, redesign, or fix an existing task/page by name, first call list_tasks or list_pages to find its id and current code, then call update_task_code or update_page_code with the full replacement code. Every SQL inside query() must be one SELECT or WITH statement only; limit broad result sets to ${MAX_TOOL_ROWS} rows unless a rendering tool applies its own limit. After any non-final tool result, give a concise human answer and do not invent facts outside the result.`
 				},
 				{
 					role: 'user',
@@ -313,10 +457,12 @@ export const actions: Actions = {
 			let createdPageId: number | null = null;
 			let updatedRoutineId: number | null = null;
 			let updatedPageId: number | null = null;
+			let answerPage: AnswerPageArtifact | null = null;
 
-			for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round += 1) {
+			toolLoop: for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round += 1) {
 				const assistantMessage = await createOpenRouterChatCompletion(modelMessages, {
 					tools: [
+						createTableMetadataTool(),
 						createQueryDatabaseTool(dialect),
 						createRoutineTool(dialect),
 						createPageTool(dialect),
@@ -340,6 +486,34 @@ export const actions: Actions = {
 				});
 
 				for (const toolCall of toolCalls) {
+					if (toolCall.function.name === GET_TABLE_METADATA_TOOL_NAME) {
+						try {
+							const args = parseTableMetadataArgs(toolCall.function.arguments);
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify(
+									createFullMetadataResult(
+										args.tableNames,
+										rowsForContext,
+										tablesById,
+										tableRestrictions
+									)
+								)
+							});
+						} catch (error) {
+							modelMessages.push({
+								role: 'tool',
+								tool_call_id: toolCall.id,
+								content: JSON.stringify({
+									error:
+										error instanceof Error ? error.message : 'Could not retrieve table metadata.'
+								})
+							});
+						}
+						continue;
+					}
+
 					if (isListTasksToolCall(toolCall.function.name)) {
 						const tasks = await listAiTasksForUser(currentUser);
 						modelMessages.push({
@@ -427,16 +601,24 @@ export const actions: Actions = {
 								visualPrompt: args.visualPrompt,
 								selectedTableIds
 							});
+							const rendered = await renderAiPage(page);
 							createdPageId = page.id;
-							modelMessages.push({
-								role: 'tool',
-								tool_call_id: toolCall.id,
-								content: JSON.stringify({
-									pageId: page.id,
-									title: page.title,
-									message: 'Dynamic page created. The user can open it from Páginas.'
-								})
-							});
+							answerPage = {
+								type: 'html',
+								pageId: page.id,
+								title: rendered.title,
+								description: page.description,
+								html: rendered.html,
+								executedSql: rendered.executedSql,
+								pageCode: page.pageCode,
+								createdAt: now()
+							};
+							answer = `${page.description}\n\nPágina creada: también queda guardada en Páginas.`;
+							const renderedSql = rendered.executedSql.join('\n--- ---\n');
+							if (renderedSql) {
+								sql = sql ? `${sql}\n--- ---\n${renderedSql}` : renderedSql;
+							}
+							break toolLoop;
 						} catch (error) {
 							modelMessages.push({
 								role: 'tool',
@@ -555,7 +737,7 @@ export const actions: Actions = {
 				chatId: activeChatId,
 				role: 'assistant',
 				content:
-					createdRoutineId || createdPageId || updatedRoutineId || updatedPageId
+					!answerPage && (createdRoutineId || createdPageId || updatedRoutineId || updatedPageId)
 						? `${answer}\n\n${[
 								createdRoutineId
 									? 'Rutina creada: ve a Tareas para verla y a Notificaciones para abrir el reporte generado.'
@@ -569,6 +751,7 @@ export const actions: Actions = {
 						: answer,
 				sql,
 				rowsJson: rows ? JSON.stringify(rows.slice(0, MAX_TOOL_ROWS)) : null,
+				answerPageJson: answerPage ? JSON.stringify(answerPage) : null,
 				createdAt: now()
 			});
 			await db

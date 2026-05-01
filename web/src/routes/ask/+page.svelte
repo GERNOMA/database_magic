@@ -39,6 +39,7 @@
 						content: pendingQuestion,
 						sql: null,
 						rowsJson: null,
+						answerPageJson: null,
 						createdAt: new Date().toISOString()
 					}
 				]
@@ -120,6 +121,52 @@
 		}
 	}
 
+	type AnswerPageArtifact = {
+		type: 'html';
+		pageId?: number;
+		title: string;
+		description: string;
+		html: string;
+		executedSql: string[];
+		pageCode: string;
+	};
+
+	function parseAnswerPage(value: string | null) {
+		if (!value) return null;
+
+		try {
+			const parsed = JSON.parse(value) as Partial<AnswerPageArtifact>;
+			if (
+				parsed.type !== 'html' ||
+				typeof parsed.title !== 'string' ||
+				typeof parsed.html !== 'string'
+			) {
+				return null;
+			}
+
+			return {
+				type: parsed.type,
+				pageId:
+					typeof parsed.pageId === 'number' && Number.isInteger(parsed.pageId)
+						? parsed.pageId
+						: undefined,
+				title: parsed.title,
+				description: typeof parsed.description === 'string' ? parsed.description : '',
+				html: parsed.html,
+				executedSql: Array.isArray(parsed.executedSql)
+					? parsed.executedSql.filter((sql): sql is string => typeof sql === 'string')
+					: [],
+				pageCode: typeof parsed.pageCode === 'string' ? parsed.pageCode : ''
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	function answerPageSql(answerPage: AnswerPageArtifact | null) {
+		return answerPage?.executedSql.join('\n--- ---\n') ?? '';
+	}
+
 	const askHref = (
 		href: '/ask' | `/ask?${string}`,
 		params: Record<string, string | number | boolean | null | undefined> = {}
@@ -128,6 +175,9 @@
 	};
 	const askAction = (actionName: string) => {
 		return withCurrentQueryParams(page.url, `?/${actionName}`);
+	};
+	const pageHref = (pageId: number) => {
+		return withCurrentQueryParams(page.url, `/pages/${pageId}`);
 	};
 </script>
 
@@ -244,6 +294,7 @@
 							</div>
 						</div>
 					{:else}
+						{@const answerPage = parseAnswerPage(message.answerPageJson)}
 						<div class="max-w-3xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
 							<div class="flex items-center justify-between gap-3">
 								<p class="text-sm font-semibold text-stone-700">{APP_NAME}</p>
@@ -256,13 +307,42 @@
 							<p class="mt-3 text-sm leading-6 whitespace-pre-wrap text-stone-800">
 								{message.content}
 							</p>
-							{#if data.isAdmin && message.sql}
+							{#if answerPage}
+								{#if answerPage.pageId}
+									<a
+										href={pageHref(answerPage.pageId)}
+										class="mt-4 inline-flex rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-50"
+									>
+										Abrir en Páginas
+									</a>
+								{/if}
+								<div
+									class="mt-4 overflow-hidden rounded-3xl border border-stone-200 bg-stone-100 p-2"
+								>
+									<iframe
+										title={answerPage.title}
+										srcdoc={answerPage.html}
+										sandbox=""
+										class="min-h-[560px] w-full rounded-2xl border border-stone-200 bg-white"
+									></iframe>
+								</div>
+							{/if}
+							{#if data.isAdmin && (message.sql || answerPageSql(answerPage))}
 								<details class="mt-4 rounded-2xl border border-stone-200 bg-stone-950 p-4">
 									<summary class="cursor-pointer text-sm font-medium text-stone-100">
 										Ver SQL generado
 									</summary>
+									<pre class="mt-3 overflow-auto text-xs leading-6 text-stone-100">{message.sql ||
+											answerPageSql(answerPage)}</pre>
+								</details>
+							{/if}
+							{#if data.isAdmin && answerPage?.pageCode}
+								<details class="mt-4 rounded-2xl border border-stone-200 bg-stone-950 p-4">
+									<summary class="cursor-pointer text-sm font-medium text-stone-100">
+										Ver código de respuesta
+									</summary>
 									<pre
-										class="mt-3 overflow-auto text-xs leading-6 text-stone-100">{message.sql}</pre>
+										class="mt-3 max-h-[520px] overflow-auto text-xs leading-6 whitespace-pre-wrap text-stone-100">{answerPage.pageCode}</pre>
 								</details>
 							{/if}
 						</div>

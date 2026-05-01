@@ -30,6 +30,10 @@ client.exec(`
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
 		user_friendly_name TEXT,
+		filter_test_row_count INTEGER,
+		filter_test_limit INTEGER,
+		filter_test_has_less_than_limit INTEGER NOT NULL DEFAULT 0,
+		filter_test_checked_at TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	);
@@ -77,6 +81,7 @@ client.exec(`
 		content TEXT NOT NULL,
 		sql TEXT,
 		rows_json TEXT,
+		answer_page_json TEXT,
 		created_at TEXT NOT NULL
 	);
 
@@ -137,6 +142,14 @@ client.exec(`
 `);
 
 ensureColumn('metadata_tables', 'user_friendly_name', 'user_friendly_name TEXT');
+ensureColumn('metadata_tables', 'filter_test_row_count', 'filter_test_row_count INTEGER');
+ensureColumn('metadata_tables', 'filter_test_limit', 'filter_test_limit INTEGER');
+ensureColumn(
+	'metadata_tables',
+	'filter_test_has_less_than_limit',
+	'filter_test_has_less_than_limit INTEGER NOT NULL DEFAULT 0'
+);
+ensureColumn('metadata_tables', 'filter_test_checked_at', 'filter_test_checked_at TEXT');
 ensureColumn(
 	'ask_chats',
 	'selected_table_ids_json',
@@ -153,6 +166,7 @@ ensureColumn(
 	'table_restrictions_json',
 	"table_restrictions_json TEXT NOT NULL DEFAULT '{}'"
 );
+ensureColumn('ask_messages', 'answer_page_json', 'answer_page_json TEXT');
 ensureColumn(
 	'ai_tasks',
 	'selected_table_ids_json',

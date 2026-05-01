@@ -5,6 +5,7 @@ import { askOpenRouter } from '$lib/server/ai/openrouter';
 import { db } from '$lib/server/db';
 import {
 	isDatabaseType,
+	listDatabaseTableExamples,
 	listDatabaseTableFields,
 	listDatabaseTableNames
 } from '$lib/server/db/query-runner';
@@ -28,9 +29,29 @@ function cleanName(name: string) {
 	return name.trim().replace(/\s+/g, '_');
 }
 
+function cleanCategories(categories: FormDataEntryValue[]) {
+	return categories
+		.map((category) => String(category).trim())
+		.filter(
+			(category, index, allCategories) => category && allCategories.indexOf(category) === index
+		);
+}
+
 function extractJson<T>(value: string): T {
 	const withoutFence = value.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '');
 	return JSON.parse(withoutFence) as T;
+}
+
+function normalizeJsonValue(value: unknown): unknown {
+	if (typeof value === 'bigint') return value.toString();
+	if (value instanceof Date) return value.toISOString();
+	if (Array.isArray(value)) return value.map(normalizeJsonValue);
+	if (value && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, nestedValue]) => [key, normalizeJsonValue(nestedValue)])
+		);
+	}
+	return value;
 }
 
 const adminRedirect = (url: URL, href: string) => redirect(303, withCurrentQueryParams(url, href));
@@ -84,12 +105,16 @@ export const actions: Actions = {
 	saveTableUserName: async ({ request, url }) => {
 		const form = await request.formData();
 		const tableId = Number(form.get('tableId'));
-		const userFriendlyName = String(form.get('userFriendlyName') ?? '').trim();
-		if (!tableId) return fail(400, { error: 'Selecciona una tabla antes de guardar el nombre.' });
+		const categories = cleanCategories(form.getAll('categories'));
+		if (!tableId)
+			return fail(400, { error: 'Selecciona una tabla antes de guardar la categoría.' });
 
 		await db
 			.update(metadataTables)
-			.set({ userFriendlyName: userFriendlyName || null, updatedAt: now() })
+			.set({
+				userFriendlyName: categories.length > 0 ? JSON.stringify(categories) : null,
+				updatedAt: now()
+			})
 			.where(eq(metadataTables.id, tableId));
 
 		throw adminRedirect(url, `/metadata?table=${tableId}&saved=1`);
@@ -190,8 +215,14 @@ export const actions: Actions = {
 		}
 
 		let fields: string[];
+		let tableExamples: Array<Record<string, unknown>>;
 		try {
 			fields = await listDatabaseTableFields(
+				connection.type,
+				connection.connectionString,
+				table.name
+			);
+			tableExamples = await listDatabaseTableExamples(
 				connection.type,
 				connection.connectionString,
 				table.name
@@ -199,7 +230,7 @@ export const actions: Actions = {
 		} catch (error) {
 			return fail(500, {
 				error:
-					error instanceof Error ? error.message : 'No se pudieron leer los campos de la tabla.'
+					error instanceof Error ? error.message : 'No se pudo leer la información de la tabla.'
 			});
 		}
 
@@ -209,7 +240,11 @@ export const actions: Actions = {
 		await db.insert(tableFiles).values({
 			tableId,
 			name: `${table.name}_automatic.json`,
-			content: JSON.stringify({ tableName: table.name, fields }, null, 2),
+			content: JSON.stringify(
+				{ tableName: table.name, fields, table_examples: normalizeJsonValue(tableExamples) },
+				null,
+				2
+			),
 			mimeType: 'application/json',
 			createdAt: now()
 		});

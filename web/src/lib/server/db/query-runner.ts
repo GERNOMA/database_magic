@@ -64,6 +64,23 @@ export async function listDatabaseTableFields(
 	return [...new Set(fields)];
 }
 
+export async function listDatabaseTableExamples(
+	type: DatabaseType,
+	connectionString: string,
+	tableName: string
+) {
+	return runReadOnlyQuery(type, connectionString, getTableExamplesSql(type, tableName));
+}
+
+export async function listDatabaseTableRows(
+	type: DatabaseType,
+	connectionString: string,
+	tableName: string,
+	limit: number
+) {
+	return runReadOnlyQuery(type, connectionString, getTableRowsSql(type, tableName, limit));
+}
+
 function getTableNamesSql(type: DatabaseType) {
 	if (type === 'postgres') {
 		return `
@@ -118,8 +135,61 @@ function getTableFieldsSql(type: DatabaseType, tableName: string) {
 	return `PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`;
 }
 
+function getTableExamplesSql(type: DatabaseType, tableName: string) {
+	if (type === 'postgres') {
+		return `
+			SELECT *
+			FROM ${quoteSqlIdentifier(tableName)}
+			ORDER BY RANDOM()
+			LIMIT 10
+		`;
+	}
+
+	if (type === 'mysql') {
+		return `
+			SELECT *
+			FROM ${quoteMysqlIdentifier(tableName)}
+			ORDER BY RAND()
+			LIMIT 10
+		`;
+	}
+
+	return `
+		SELECT *
+		FROM ${quoteSqliteIdentifier(tableName)}
+		ORDER BY RANDOM()
+		LIMIT 10
+	`;
+}
+
+function getTableRowsSql(type: DatabaseType, tableName: string, limit: number) {
+	const safeLimit = Math.max(1, Math.floor(limit));
+
+	if (type === 'mysql') {
+		return `
+			SELECT *
+			FROM ${quoteMysqlIdentifier(tableName)}
+			LIMIT ${safeLimit}
+		`;
+	}
+
+	return `
+		SELECT *
+		FROM ${type === 'sqlite' ? quoteSqliteIdentifier(tableName) : quoteSqlIdentifier(tableName)}
+		LIMIT ${safeLimit}
+	`;
+}
+
 function sqlString(value: string) {
 	return `'${value.replace(/'/g, "''")}'`;
+}
+
+function quoteSqlIdentifier(value: string) {
+	return `"${value.replace(/"/g, '""')}"`;
+}
+
+function quoteMysqlIdentifier(value: string) {
+	return `\`${value.replace(/`/g, '``')}\``;
 }
 
 function quoteSqliteIdentifier(value: string) {

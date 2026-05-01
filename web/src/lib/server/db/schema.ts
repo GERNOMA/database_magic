@@ -13,6 +13,10 @@ export const metadataTables = sqliteTable('metadata_tables', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull().unique(),
 	userFriendlyName: text('user_friendly_name'),
+	filterTestRowCount: integer('filter_test_row_count'),
+	filterTestLimit: integer('filter_test_limit'),
+	filterTestHasLessThanLimit: integer('filter_test_has_less_than_limit').notNull().default(0),
+	filterTestCheckedAt: text('filter_test_checked_at'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull()
 });
@@ -67,6 +71,7 @@ export const askMessages = sqliteTable('ask_messages', {
 	content: text('content').notNull(),
 	sql: text('sql'),
 	rowsJson: text('rows_json'),
+	answerPageJson: text('answer_page_json'),
 	createdAt: text('created_at').notNull()
 });
 
